@@ -40,9 +40,10 @@ Actions
             - Departure window is just for checking traffic to an intened destination place. When departure window starts, check to make sure that the user is at the origin place. If not at the origin place, abort trip.
             - maybe have parent app subscribe to user location, so can update tile all the time. And have trip/child app subscribe to user location, so can indicate trip upon departure, etc.? Will need to coordinate between the two though in order to not overwrite one another. Maybe parent yields to child if in the middle of a trip?
 
-    - At least once before departure window begins, and during departure window, (i) update tile with recommended route; (ii) check if need to leave before the departure window to arrive on time; (iii) send push notification or turn on/off switch if bad traffic (update tile with how many minutes in advance need to leave or countdown to departure); (iv) if destination is home, update tile to show that haven't left (either text "Not Left" or can show location with green coloring) (can show target arrival time before departure, using a target icon along with the target time); (v) send text if haven't left yet and going to miss the target arrival by X mins
+    - At least once before departure window begins, and during departure window, (i) update tile with recommended route; (ii) check if need to leave before the departure window to arrive on time; (iii) send push notification or turn on/off switch if bad traffic (update tile with how many minutes in advance need to leave or countdown to departure); (iv) send text if haven't left yet and going to miss the target arrival by X mins
 
-    - When depart, (i) update tile with ETA; (ii) send push notification with recommended route if enabled; (iii) turn on/off switch or push button if enabled; (iv) send text to designated device if going to be late
+    - When depart, (i) update tile with ETA; (ii) send push notification with recommended route if enabled; (iii) turn on/off switch or push button if enabled
+    - Send text to designated device if going to be late (either because haven't left in time or because left too late)
     - If life360 device, continue to update tile and send push notification as route or ETA changes
     - When arrive, (i) update tile; (ii) turn on/off switch or push button if enabled
 
@@ -241,19 +242,22 @@ def getPeopleDescription() {
 }
 
 def addPerson(id) {
-    if (!state.people) {
-        state.people = [:]
-        def currentPlaceMap = [name: null, id: null, arrival: null]
-        def currentVehicleMap = [id: null, arrival: null]
-        def previousPlaceMap = [name: null, id: null, arrival: null, departure: null]
-        def previousVehicleMap = [id: null, arrival: null, departure: null]
-        def currentMap = [place: currentPlaceMap, vehicle: currentVehicleMap]
-        def previousMap = [place: previousPlaceMap, vehicle: previousVehicleMap]
-        def personMap = [current: currentMap, previous: previousMap, isDriving: null]
+    if (!state.people) state.people = [:]
+    def currentPlaceMap = [name: null, id: null, arrival: null]
+    def currentVehicleMap = [id: null, arrival: null]
+    def previousPlaceMap = [name: null, id: null, arrival: null, departure: null]
+    def previousVehicleMap = [id: null, arrival: null, departure: null]
+    def currentMap = [place: currentPlaceMap, vehicle: currentVehicleMap]
+    def previousMap = [place: previousPlaceMap, vehicle: previousVehicleMap]
+    def personMap = [current: currentMap, previous: previousMap, isDriving: null]
         // so use like state.people.persondId.current.place.name
 
-        state.people.id = personMap
-    }
+    state.people.id = personMap
+}
+
+
+def getPerson(personId) {
+    return state.people?.personId
 }
 
 def getIdOfPersonWithName(name) {
@@ -783,7 +787,24 @@ def updateTracker(personId) {
     def tracker = getTracker(personId)
     if (tracker) {
         // update from state
+        // check whether trip is active for display
     }   
+}
+
+def handlePlaceChange(personId) {
+    
+    childApps.each { child ->
+    	handlePlaceChange(getPerson(personId))
+    }
+    updateTracker(personId)
+}
+
+def handleVehicleChange(personId) {
+    updateTracker(personId)
+}
+
+def handleDrivingChange(personId) {
+    updateTracker(personId)
 }
 
 def setPersonPlaceByName(personId, placeName) {    
@@ -804,7 +825,7 @@ def setPersonPlaceByName(personId, placeName) {
         state.people.personId?.current.place.id = null
         state.people.personId?.current.place.name = placeName
     }
-    updateTracker(personId)
+    handlePlaceChange(personId)
 }
 
 def setPersonPlaceById(personId, placeId) {    
@@ -813,7 +834,7 @@ def setPersonPlaceById(personId, placeId) {
     state.people.personId?.current.place.arrival = new Date()
     state.people.personId?.current.place.id = placeId
     state.people.personId?.current.place.name = getNameOfPlaceWithId(placeIdByAddress)
-    updateTracker(personId)
+    handlePlaceChange(personId)
 }
 
 def setPersonVehicleById(personId, vehicleId) {    
@@ -821,7 +842,7 @@ def setPersonVehicleById(personId, vehicleId) {
     state.people.personId?.previous.vehicle.departure = new Date()
     state.people.personId?.current.vehicle.arrival = new Date()
     state.people.personId?.current.vehicle.id = vehicleId
-    updateTracker(personId)
+    handleVehicleChange(personId)
 }
 
 def isLife360DeviceForPerson(personId, device) {
@@ -841,7 +862,7 @@ def life360DrivingHandler(evt) {
     state.people?.each { personId, person ->
         if (isLife360DeviceForPerson(personId, evt.getDevice())) {
             state.people.personId?.isDriving = evt.value
-            updateTracker(personId)
+            handleDrivingChange(personId)
         }
     }    
 }
@@ -1018,4 +1039,3 @@ def logDebug(msg)
         log.debug(msg)
     }
 }
-
