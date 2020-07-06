@@ -107,29 +107,14 @@ preferences {
      page name: "PeoplePage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
      page name: "VehiclesPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
      page name: "PlacesPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
-    
+     page name: "TripsPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
      page name: "RestrictionsPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
      page name: "TravelAPIPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
      page name: "AdvancedPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
 }
 
-def installCheck() {         
-	state.appInstalled = app.getInstallationState()
-	
-	if (state.appInstalled != 'COMPLETE') {
-		section{paragraph "Please hit 'Done' to install '${app.label}' parent app "}
-  	}
-  	else {
-    	log.info "Multi-Place Installed OK"
-  	}
-}
-
 def mainPage() {
     dynamicPage(name: "mainPage") {
-    	installCheck()
-		
-		if (state.appInstalled == 'COMPLETE') {
-            
             section {
                 href(name: "PeoplePage", title: "Manage People", description: getPeopleDescription(), required: false, page: "PeoplePage")
                 href(name: "VehiclesPage", title: "Manage Vehicles", description: getVehiclesDescription(), required: false, page: "VehiclesPage")
@@ -138,10 +123,15 @@ def mainPage() {
             
   			section {
                 paragraph getInterface("header", " Manage Travel Advisor")
-                app(name: "anyOpenApp", appName: "Multi-Place Trip Planner", multiple: true, namespace: "lnjustin", title: "<b>Add New Trip</b>")
-                href(name: "RestrictionsPage", title: "Manage Travel Advisor Restrictions", required: false, page: "RestrictionsPage")
-                href(name: "TravelAPIPage", title: "Manage Travel API Access", required: false, page: "TravelAPIPage")
-                href(name: "AdvancedPage", title: "Manage Advanced Settings", required: false, page: "AdvancedPage")
+                if (!api_key) {
+                    apiInput()
+                }
+                else {
+                    href(name: "TripsPage", title: "Manage Trips", required: false, page: "TripsPage")
+                    href(name: "RestrictionsPage", title: "Manage Travel Advisor Restrictions", required: false, page: "RestrictionsPage")
+                    href(name: "TravelAPIPage", title: "Manage Travel API Access", required: false, page: "TravelAPIPage")
+                    href(name: "AdvancedPage", title: "Manage Advanced Settings", required: false, page: "AdvancedPage")
+                }
 			}
             
             section
@@ -150,8 +140,6 @@ def mainPage() {
 
                 input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
             }
-          
-		}
 	}
 }
 
@@ -159,9 +147,13 @@ def TravelAPIPage() {
     dynamicPage(name: "TravelAPIPage") {
         section {
             paragraph getInterface("header", " Manage Travel API Access")
-            input name: "api_key", type: "text", title: "Enter Google API key", required: true, submitOnChange: true
+            apiInput()
         }
     }
+}
+
+def apiInput() {
+    input name: "api_key", type: "text", title: "Enter Google API key", required: true, submitOnChange: true
 }
 
 def PeoplePage() {
@@ -252,7 +244,7 @@ def addPerson(id) {
         def personMap = [current: currentMap, previous: previousMap, isDriving: null]
         // so use like state.people.persondId.current.place.name
 
-        state.people.id = personMap
+        state.people[id] = personMap
     }
 }
 
@@ -285,6 +277,9 @@ void resetAddEditState() {
     state.addingPlace = false
     state.editingPlace = false
     state.deletingPlace = false
+    state.addingTrip = false
+    state.editingTrip = false
+    state.deletingTrip = false
 }
 
 void appButtonHandler(btn) {
@@ -385,6 +380,37 @@ void appButtonHandler(btn) {
       case "cancelDeletePlace":
          state.deletingPlace = false
          break
+      case "addTrip":
+         state.addingTrip = true
+         if (!state.lastTripID) state.lastTripID = 0
+         state.lastTripID ++
+         break
+      case "submitNewTrip":
+         addTrip(state.lastTripID)  
+         state.addingTrip = false
+         break
+      case "cancelAddTrip":
+         state.addingTrip = false
+         state.lastTripID --
+         break
+      case "editTrip":
+         state.editingTrip = true
+         break
+      case "submitEditTrip":
+         state.editingTrip = false
+         break
+      case "cancelEditTrip":
+         state.editingTrip = false
+         break
+      case "deleteTrip":
+         state.deletingTrip = true
+         break
+      case "submitDeleteTrip":
+         if (tripToDelete) deleteTrip(tripToDelete)
+         state.deletingTrip = false
+         break
+      case "cancelDeleteTrip":
+         state.deletingTrip = false
       default:
          log.warn "$btn press not handled"
          break
@@ -739,6 +765,38 @@ def initialize() {
     initializeTrackers()
 }
 
+def scheduleTimeTriggers() {
+    if (state.trips) {
+        for (tripId in state.trips) {  
+            def earliestDeparture = settings["trip${tripId}EarliestDepartureTime"]
+            def latestDeparture = settings["trip${tripId}LatestDepartureTime"]
+            if (earliestDeparture) {
+                def earlyFetchTime = adjustTimeBySecs(earliestDeparture, getEarlyFetchMinsSetting()*60)
+                schedule(earlyFetchTime, earlyTripFetchHandler, [data: [tripId: tripId]])
+            }
+            if (earliestDeparture) {
+                schedule(earliestDeparture, startDepartureWindowHandler, [data: [tripId: tripId]])
+            }
+            if (latestDeparture) {
+                schedule(latestDeparture, endDepartureWindowHandler, [data: [tripId: tripId]])
+            }   
+        }
+    }
+}
+
+def earlyTripFetchHandler(data) {
+    def tripId = data.tripId
+}
+
+def startDepartureWindowHandler(data) {
+    def tripId = data.tripId
+}
+
+
+def endDepartureWindowHandler(data) {
+    def tripId = data.tripId
+}
+
 def subscribeTriggers() {
     subscribePeople()
     subscribeVehicles()
@@ -882,14 +940,126 @@ def uninstalled() {
     deleteAllTrackers()
 }
 
-def getChildAppLabels() {
-    childLabels = []
-    childApps.each { child ->
-    	childLabels.add(child.label)
-    }  
-    return childLabels
+def TripsPage() {
+    dynamicPage(name: "TripsPage") {
+        
+         section {
+            paragraph getInterface("header", " Manage Trips")
+            if (state.trips) {
+                def i = 0
+                def tripsDisplay = "<table align=left border=0 margin=0>"
+                for (id in state.trips) {
+                    tripsDisplay += "" + ((i % 2 == 0) ? "<tr>" : "") + "<td align=center style:'width=50%'><img style='max-width:100px' border=0  src='${getPlaceIcon(settings["trip${id}Origin"])}'> --> <img style='max-width:100px' border=0 src='${getPlaceIcon(settings["trip${id}Destination"])}'><br><font style='font-size:20px;font-weight: bold'>${getNameOfTripWithId(id)}</font></td>" + ((i % 4 == 1) ? "</tr>" : "")
+                    i++
+                }
+                tripsDisplay += "</table>"
+                paragraph tripsDisplay
+                paragraph getInterface("line", "")
+            }
+
+            if (state.addingTrip) {
+                input name: "trip${state.lastTripID}Origin", type: "enum", title: "Origin of Trip", required: true, submitOnChange: true, options: getPlacesEnumList()
+                input name: "trip${state.lastTripID}Destination", type: "enum", title: "Destination of Trip", required: true, submitOnChange: true, options: getPlacesEnumList()    
+    
+                input name: "trip${state.lastTripID}People", type: "enum", title: "Traveler(s)", required: true, submitOnChange: true, options: getPeopleEnumList(), multiple: true 
+                input name: "trip${state.lastTripID}Vehicles", type: "enum", title: "Vehicle(s)", required: true, submitOnChange: true, options: getVehiclesEnumList(), multiple: true 
+                input name: "trip${state.lastTripID}Days", type: "enum", title: "Day(s) of Week", required: true, multiple:true, options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]  
+                input name: "trip${state.lastTripID}EarliestDepartureTime", type: "time", title: "Earliest Departure Time", required: false, width: 4, submitOnChange: true
+    
+                input name: "trip${state.lastTripID}LatestDepartureTime", type: "time", title: "Latest Departure Time", required: false, width: 4
+                input name: "trip${state.lastTripID}TargetArrivalTime", type: "time", title: "Target Arrival", required: false, width: 4
+                
+                input name: "submitNewTrip", type: "button", title: "Submit", width: 3
+                input name: "cancelAddTrip", type: "button", title: "Cancel", width: 3
+            }
+            else if (state.deletingTrip) {
+                input name: "tripToDelete", type: "enum", title: "Delete Trip:", options: getTripEnumList(), multiple: false, submitOnChange: true
+                if (tripToDelete) input name: "submitDeleteTrip", type: "button", title: "Confirm Delete", width: 3
+                input name: "cancelDeleteTrip", type: "button", title: "Cancel", width: 3
+            }
+            else if (state.editingTrip) {
+                input name: "tripToEdit", type: "enum", title: "Edit Trip:", options: getTripEnumList(), multiple: false, submitOnChange: true
+                if (tripToEdit) {
+                    def id = getIdOfTripWithName(tripToEdit)
+                    input name: "trip${id}Origin", type: "enum", title: "Origin of Trip", required: true, submitOnChange: true, options: getPlacesEnumList()
+                    input name: "trip${id}Destination", type: "enum", title: "Destination of Trip", required: true, submitOnChange: true, options: getPlacesEnumList()    
+    
+                    input name: "trip${id}People", type: "enum", title: "Traveler(s)", required: true, submitOnChange: true, options: getPeopleEnumList(), multiple: true 
+                    input name: "trip${id}Vehicles", type: "enum", title: "Vehicle(s)", required: true, submitOnChange: true, options: getVehiclesEnumList(), multiple: true 
+                    input name: "trip${id}Days", type: "enum", title: "Day(s) of Week", required: true, multiple:true, options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]  
+                    input name: "trip${id}EarliestDepartureTime", type: "time", title: "Earliest Departure Time", required: false, width: 4, submitOnChange: true
+    
+                    input name: "trip${id}LatestDepartureTime", type: "time", title: "Latest Departure Time", required: false, width: 4
+                    input name: "trip${id}TargetArrivalTime", type: "time", title: "Target Arrival", required: false, width: 4                    
+                }
+                input name: "submitEditTrip", type: "button", title: "Submit", width: 3
+                input name: "cancelEditTrip", type: "button", title: "Cancel", width: 3
+            }            
+            else {               
+                input name: "addTrip", type: "button", title: "Add Trip", width: 3                
+                input name: "editTrip", type: "button", title: "Edit Trip", width: 3
+                app.clearSetting("tripToEdit")
+                input name: "deleteTrip", type: "button", title: "Delete Trip", width: 3
+                app.clearSetting("tripToDelete")
+            } 
+
+        }
+       
+        section 
+        {
+            
+            href(name: "PreferredRoutePage", title: "Configure Preferred Route", required: false, page: "PreferredRoutePage")
+            href(name: "ActionConfigPage", title: "Configure What To Do With Travel Information", required: false, page: "ActionConfigPage")
+            paragraph getInterface("line", "")
+
+
+        }
+    }
 }
 
+def getTripEnumList() {
+    def list = []
+    if (state.trips) {
+        for (id in state.trips) {
+            def tripName = getNameOfTripWithId(id)
+            list.add(tripName)
+        }
+    }
+    return list
+}
+
+def getIdOfTripWithName(name) {
+    for (id in state.trips) {
+        def tripName = getNameOfTripWithId(id)
+        if (tripName == name) return id
+    }
+    log.warn "No Trip Found With the Name: ${name}"
+    return null    
+}
+
+def addTrip(id) {
+    if (!state.trips) state.trips = []
+    state.trips.add(id)
+}
+
+def getNameOfTripWithId(id) {
+    return settings["trip${id}Origin"] + " to " + settings["trip${id}Destination"]
+}
+
+def deleteTrip(nameToDelete) {
+    def idToDelete = getIdOfTripWithName(nameToDelete)
+    if (idToDelete && state.trips) {       
+        state.trips.removeElement(idToDelete)
+        app.clearSetting("trip${id}Origin")
+        app.clearSetting("trip${id}Destination")
+        app.clearSetting("trip${id}People")
+        app.clearSetting("trip${id}Vehicles")
+        app.clearSetting("trip${id}Days")
+        app.clearSetting("trip${id}EarliestDepartureTime")
+        app.clearSetting("trip${id}LatestDepartureTime")
+        app.clearSetting("trip${id}TargetArrivalTime")
+    }
+}
 
 def getEarlyFetchMinsSetting() {
     return (earlyFetchMins) ? earlyFetchMins : earlyFetchMinsDefault
@@ -1008,7 +1178,17 @@ def getInterface(type, txt="") {
             return "<div style='color:#000000;background-color:#ededed;'>${txt}</div>"
             break        
     }
-}  
+} 
+
+def adjustTimeBySecs(time, secs) {
+    Calendar cal = Calendar.getInstance()
+    cal.setTimeZone(location.timeZone)
+    def dateTime = toDateTime(time)
+    cal.setTime(dateTime)
+    cal.add(Calendar.SECOND, secs)
+    Date newDate = cal.getTime()
+    return newDate
+}
 
 
 def logDebug(msg) 
@@ -1018,4 +1198,3 @@ def logDebug(msg)
         log.debug(msg)
     }
 }
-
