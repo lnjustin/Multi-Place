@@ -1,0 +1,921 @@
+/*
+    TO do: only push if new info. Avoid duplicates
+ */
+import groovy.json.*
+import java.text.SimpleDateFormat
+import groovy.transform.Field
+import java.util.regex.*
+import java.text.ParseException
+import java.util.Date;
+import java.util.Calendar
+import groovy.time.*
+
+definition(
+    name: "Multi-Place Trip Planner",
+    parent: "lnjustin:Multi-Place",
+    namespace: "lnjustin",
+    author: "Justin Leonard",
+    description: "Multi-Place Trip Planner",
+    category: "Green Living",
+    iconUrl: "",
+    iconX2Url: "",
+    iconX3Url: "",
+    oauth: false,
+    usesThirdPartyAuthentication: true)
+
+preferences
+{
+    page name: "mainPage", title: "", install: true, uninstall: true
+    page name: "PreferredRoutePage", title: "", install: false, uninstall: false, nextPage: "mainPage"   
+    page name: "ActionConfigPage", title: "", install: false, uninstall: false, nextPage: "mainPage"
+}
+
+
+def mainPage() {
+    dynamicPage(name: "mainPage") {
+       
+        section 
+        {
+             paragraph getInterface("header", " Configure Trip")
+
+            tripInput()
+            
+            if (settings["origin"] && settings["destination"]) href(name: "PreferredRoutePage", title: "Configure Preferred Route", required: false, page: "PreferredRoutePage")
+            href(name: "ActionConfigPage", title: "Configure What To Do With Travel Information", required: false, page: "ActionConfigPage")
+            paragraph getInterface("line", "")
+
+
+        }
+    }
+}
+
+def tripInput() {
+    if (settings["origin"] && settings["tripVehicles"] && settings["destination"]) {
+        def tripDisplay = "<table align=center border=0 margin=0><tr><td><img border=0 style='max-width:100px' src='${parent.getPlaceIcon(settings["origin"])}'>---------<img border=0 style='max-width:100px' src='${parent.getVehicleIcon(settings["tripVehicles"][0])}'>-----------<img border=0 style='max-width:100px' src='${parent.getPlaceIcon(settings["destination"])}'></td></tr></table>"
+        paragraph tripDisplay
+    }
+    input name: "origin", type: "enum", title: "Origin of Trip", required: true, submitOnChange: true, options: parent.getPlacesEnumList()
+    input name: "destination", type: "enum", title: "Destination of Trip", required: true, submitOnChange: true, options: parent.getPlacesEnumList() 
+    
+    if (settings["origin"] && settings["destination"]) {
+         app.updateLabel(settings["origin"] + " to " + settings["destination"])
+    }
+    // label title: "Name:", required: true
+    
+    
+    input name: "tripPeople", type: "enum", title: "Traveler(s)", required: true, submitOnChange: true, options: parent.getPeopleEnumList(), multiple: true 
+    input name: "tripVehicles", type: "enum", title: "Vehicle(s)", required: true, submitOnChange: true, options: parent.getVehiclesEnumList(), multiple: true 
+    input name: "tripDays", type: "enum", title: "Day(s) of Week", required: true, multiple:true, options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]  
+    input name: "earliestDepartureTime", type: "time", title: "Earliest Departure Time", required: false, width: 4, submitOnChange: true
+    log.debug "earliest time is ${earliestDepartureTime}"
+    input name: "latestDepartureTime", type: "time", title: "Latest Departure Time", required: false, width: 4
+    input name: "targetArrivalTime", type: "time", title: "Target Arrival", required: false, width: 4
+  
+}
+
+
+def ActionConfigPage() {
+    dynamicPage(name: "ActionConfigPage") {
+        section 
+        {
+            paragraph getInterface("header", " Configure What To Do With Fetched Travel Information")
+            actionInput()
+        }    
+    }
+}
+
+
+
+def actionInput() {
+  //  paragraph getInterface("subheader", "Push Notification")
+    paragraph "Send a push notification to select notification devices indicating recommended route."
+     input name: "isPushNotification", type: "bool", title: "Send Push Notification?", required: false, submitOnChange: true
+    if (isPushNotification) {
+         input name: "pushDevice", type: "capability.notification", title: "Push Notification Device(s)", required: false, multiple: true, submitOnChange: true    
+         input name: "onlyPushIfNonPreferred", type: "bool", title: getInterface("subField", "But Only if Non-Preferred Route Recommended?"), required: false, submitOnChange: false
+        paragraph getInterface("note", "Smart Travel avoids sending duplicate push notifications, so that push notifications only convey changed travel information.")
+    }
+    paragraph getInterface("line", "")
+}
+
+
+def getInterface(type, txt="") {
+    switch(type) {
+        case "line": 
+            return "<hr style='background-color:#555555; height: 1px; border: 0;'></hr>"
+            break
+        case "header": 
+            return "<div style='color:#ffffff;font-weight: bold;background-color:#555555;border: 1px solid;box-shadow: 2px 3px #A9A9A9'>${txt}</div>"
+            break
+        case "subheader": 
+            return "<div style='color:#000000;font-weight: bold;'>${txt}</div>"
+            break
+        case "error": 
+            return "<div style='color:#ff0000;font-weight: bold;'>${txt}</div>"
+            break
+        case "note": 
+            return "<div style='color:#333333;font-size: small;'>${txt}</div>"
+            break
+        case "subField":
+            return "<div style='color:#000000;background-color:#ededed;'>${txt}</div>"
+            break        
+    }
+}  
+
+def PreferredRoutePage() {
+    dynamicPage(name: "PreferredRoutePage") {      
+        section("") {      
+            paragraph getInterface("header", " Configure Preferred Route")
+            def routeOptions = getRouteOptions()
+            if (getRouteOptions() != null) {
+                input name: "preferredRoute", type: "enum", title: "Preferred Route", required: false, options: getRouteOptions(), submitOnChange: true
+                 paragraph "You can optionally bias route recommendations in favor of your preferred route. Preferred Route Bias is how many minutes faster an alternate route must be in order to be recommended over your preferred route."
+                input name: "preferredRouteBias", type: "number", title: "Preferred Route Bias (mins)", required: false, width: 4
+                if (preferredRoute) {          
+                    def routeSteps = getPreferredRouteSteps()
+                    if (routeSteps) {
+                        paragraph getInterface("header", " Preferred Route Steps")
+                        for (step in routeSteps) {
+                            paragraph "${step.html_instructions}"
+                        }
+                    }
+                }
+            }
+            else {
+                log.error "Error: Unable to Retrieve Route Options."
+                paragraph getInterface("error", "Error: Unable to Retrieve Route Options. Please check your Internet connection.")
+            }
+
+        }
+    }
+}
+
+def logDebug(msg) 
+{
+    if (logEnable)
+    {
+        log.debug(msg)
+    }
+}
+
+
+def installed() {
+    initialize()
+}
+
+def initialize() {       
+    unsubscribe()
+    subscribeTriggers()
+    unschedule()
+    scheduleTimeTriggers()
+    initializeState()
+}
+
+def updated()
+{
+    initialize()
+}
+
+def uninstalled()
+{
+    unsubscribe()
+    unschedule()
+}
+
+def refresh() {
+
+}
+
+def initializeState() {
+    state.inFetchingPeriod = false // initialize to false upon install or update
+    state.lastPushedRoute = ""
+    state.optionsCache = null
+    state.optionsCacheTime = null
+    state.cache = null
+    state.cacheTime = null
+}
+
+def initializeStateForFetchPeriod() {
+    state.lastPushedRoute = ""
+}
+
+    
+def getGoogleMapsApiUrl() {
+    return "https://maps.googleapis.com/maps/api/"
+}
+
+def subscribeTriggers() {
+    subscribePeople()
+    subscribeVehicles()
+    subscribePlaces()
+}
+
+def subscribePeople() {
+    for (person in tripPeople) {
+        def id = parent.getIdOfPersonWithName(person)
+        if (parent["person${id}Life360"]) {
+            subscribe(parent["person${id}Life360"], "address1", life360AddressHandler)
+            subscribe(parent["person${id}Life360"], "address1Prev", life360PreviousAddressHandler)
+            subscribe(parent["person${id}Life360"], "isDriving", life360DrivingHandler)
+        }
+    }
+}
+
+
+def subscribeVehicles() {
+    for (vehicle in tripVehicles) {
+        for (person in tripPeople) {
+            def vehicleId = parent.getIdOfVehicleWithName(vehicle)
+            def personId = parent.getIdOfPersonWithName(person)
+            if (parent["vehicle${vehicleId}Person${personId}Sensor"]) subscribe(parent["vehicle${vehicleId}Person${personId}Sensor"], "presence", vehiclePresenceSensorHandler)
+        }
+    }
+}
+
+def subscribePlaces() {
+    def originId = parent.getIdOfPlaceWithName(origin)
+    def destinationId = parent.getIdOfPlaceWithName(destination)
+    for (person in tripPeople) {
+        def personId = parent.getIdOfPersonWithName(person)
+        if (parent["place${originId}Person${personId}Sensor"]) subscribe(parent["place${originId}Person${personId}Sensor"], "presence", originPresenceSensorHandler)
+        if (parent["place${destinationId}Person${personId}Sensor"]) subscribe(parent["place${destinationId}Person${personId}Sensor"], "presence", destinationPresenceSensorHandler)
+    }    
+
+    if (parent["place${originId}GarageDoor"]) subscribe(parent["place${originId}GarageDoor"], "door", originGarageHandler)
+    if (parent["place${originId}ContactSensor"]) subscribe(parent["place${originId}ContactSensor"], "contact", originContactSensorHandler)
+    if (parent["place${originId}Switch"]) subscribe(parent["place${originId}Switch"], "switch", originSwitchHandler)
+
+    if (parent["place${destinationId}GarageDoor"]) subscribe(parent["place${destinationId}GarageDoor"], "door", destinationGarageHandler)
+    if (parent["place${destinationId}ContactSensor"]) subscribe(parent["place${destinationId}ContactSensor"], "contact", destinationContactSensorHandler)
+    if (parent["place${destinationId}Switch"]) subscribe(parent["place${destinationId}Switch"], "switch", destinationSwitchHandler)
+
+}
+
+def life360AddressHandler(evt) {
+    if ((evt.value == destination || evt.value == parent.getPlaceAddress(destination)) && arrivalConditionsMet()) arrive()
+}
+
+def life360PreviousAddressHandler(evt) {
+    if ((evt.value == origin || evt.value == parent.getPlaceAddress(origin)) && departureConditionsMet()) depart()
+}
+
+def life360DrivingHandler(evt) {
+    if (evt.value == true && departureConditionsMet()) depart()
+}
+
+def vehiclePresenceSensorHandler(evt) {
+    if (evt.value == "present" && departureConditionsMet()) depart()
+    if (evt.value == "not present" && arrivalConditionsMet() && !mostPreferredArrivalTriggersConfigured()) arrive()  // only detect arrived when get out of vehicle if there are not more reliable triggers configured for arriving at the destination
+}
+
+def originPresenceSensorHandler(evt) {
+    if (evt.value == "not present" && departureConditionsMet()) depart()
+}
+
+def destinationPresenceSensorHandler(evt) {
+    if (evt.value == "present" && arrivalConditionsMet()) arrive()
+}
+
+def originGarageHandler(evt) {
+    if (departureConditionsMet()) preDeparture()
+}
+
+def originContactSensorHandler(evt) {
+    if (departureConditionsMet()) preDeparture()
+}
+
+def originSwitchHandler(evt) {
+    if (departureConditionsMet()) preDeparture()
+}
+
+// TO DO: what to do if these sensors trip at destination?
+def destinationGarageHandler(evt) {
+  //  if (arrivalConditionsMet()) arrive()
+}
+
+def destinationContactSensorHandler(evt) {
+  //  if (arrivalConditionsMet()) arrive()
+}
+
+def destinationSwitchHandler(evt) {
+  //  if (arrivalConditionsMet()) arrive()
+}
+
+def scheduleTimeTriggers() {
+    if (earliestDepartureTime) {
+        Integer earlyFetchMins = parent.getEarlyFetchMinsSetting()
+        def earlyFetchTime = adjustTimeBySecs(earliestDepartureTime, earlyFetchMins*60)
+        schedule(earlyFetchTime, earlyFetchHandler)
+    }
+    if (earliestDepartureTime) {
+        schedule(earliestDepartureTime, startDepartureWindowHandler)
+    }
+    if (latestDepartureTime) {
+        schedule(latestDepartureTime, endDepartureWindowHandler)
+    }
+}
+
+// TO DO: will need to push info to parent app to trigger action, since parent will not be scheduled to do anything (like update the tile) at these times
+// ### Early Fetch Handlers ### //
+def earlyFetchHandler(evt) {
+    
+}
+
+// ###  Departure Handlers  ### //
+def startDepartureWindowHandler(evt) {
+    
+}
+
+def endDepartureWindowHandler(evt) {
+    
+}
+
+Boolean departureConditionsMet() {
+    if (inDepartureWindow() && !parent.isRestricted() && !state.enRoute) return true
+    else return false
+}
+
+def preDeparture() {
+    state.preDeparture = true
+}
+
+def depart() {
+    state.enRoute = true    // update state to reflect that have departed
+    
+    // TO DO: schedule arrival at estimtaed ETA if don't have any acceptable triggers configured
+}
+
+Boolean atOrigin() {
+     // check whether at least one traveler is at the origin, ready for departure?   
+}
+
+Boolean inDepartureWindow() {
+    Boolean inWindow = true
+    
+    // Day of Week Travel Check
+    if(tripDays && !isTripDay()) {
+        if (logEnable) log.debug "Trip Day Check Failed."
+	    inWindow = false
+    }
+    
+    // Time Restriction
+    if (earliestDepartureTime && latestDepartureTime) {
+        if(!timeOfDayIsBetween(toDateTime(earliestDepartureTime), toDateTime(latestDepartureTime), new Date(), location.timeZone)) {
+            if (logEnable) log.debug "Time Check Failed."
+            inWindow = false
+        }
+    }    
+    return inWindow
+}
+
+
+Boolean arrivalConditionsMet() {
+    if (state.enRoute) return true
+    else return false
+}
+
+Boolean mostPreferredArrivalTriggersConfigured() {
+    def isConfigured = false
+    
+    def destinationId = parent.getIdOfPlaceWithName(destination)
+    for (person in tripPeople) {
+        def personId = parent.getIdOfPersonWithName(person)
+        if (parent["person${personId}Life360"]) isConfigured = true
+        if (parent["place${destinationId}Person${personId}Sensor"]) isConfigured = true
+        
+    }
+    if (parent["place${destinationId}GarageDoor"]) isConfigured = true
+    if (parent["place${destinationId}ContactSensor"]) isConfigured = true
+    if (parent["place${destinationId}Switch"]) isConfigured = true
+    
+    return isConfigured
+}
+
+
+Boolean acceptableArrivalTriggersConfigured() {
+    def isConfigured = false
+    
+    if (mostPreferredArrivalTriggersConfigured()) isConfigured = true
+    
+    for (vehicle in tripVehicles) {
+        for (person in tripPeople) {
+            def vehicleId = parent.getIdOfVehicleWithName(vehicle)
+            def personId = parent.getIdOfPersonWithName(person)
+            if (parent["vehicle${vehicleId}Person${personId}Sensor"]) isConfigured = true
+        }
+    }    
+
+    return isConfigured
+}
+
+def arrive() {
+    state.enRoute = false    // update state to reflect that have arrived
+}
+
+
+
+
+
+
+def handleStartFetchEvent() {
+    if (logEnable) log.trace "Handling start fetch event"
+    if (isStartFetchAllowed()) {
+        if (logEnable) log.trace "Fetch Allowed. Fetching..."
+        if (fetchFrequency == periodicFreq) {
+            initializeStateForFetchPeriod()
+            state.inFetchingPeriod = true
+            periodicFetch()
+        }
+        else fetch()
+    }
+}
+
+def periodicFetch() {
+    if (state.inFetchingPeriod) {
+        fetch()
+        runIn(fetchInterval*60, "periodicFetch")
+    }
+    else {
+        if (logEnable) log.debug "Fetching Period Ended. No more fetching for now."   
+    }
+}
+
+def isStartFetchAllowed() {
+    def isAllowed = true
+    
+    // Day of Week Travel Check
+    if(travelDays && !isTravelDay()) {
+        if (logEnable) log.debug "Travel Day Check Failed. Fetching Not Started."
+	    isAllowed = false
+    }
+    
+    // Time Restriction
+    if (allowedStartFetchStartTime && allowedStartFetchEndTime) {
+        if(!timeOfDayIsBetween(toDateTime(allowedStartFetchStartTime), toDateTime(allowedStartFetchEndTime), new Date(), location.timeZone)) {
+            if (logEnable) log.debug "Time Check Failed. Fetching Not Started."
+            isAllowed = false
+        }
+    }
+        
+    if (allowedStartFetchModes) {
+        if(!allowedStartFetchModes.contains(location.mode)) {
+            if (logEnable) log.debug "Mode Check Failed. Fetching Not Started."
+            isAllowed = false
+        }
+    }
+    
+    return isAllowed
+}
+
+// ###  STOP Fetch Handlers ### //
+def stopFetchTimeHandler(evt) {
+    handleStopFetchEvent()
+}
+
+def stopFetchPresenceSensorHandler(evt) {
+    if (stopFetchPresenceSensorValue && evt.value == stopFetchPresenceSensorValue) {
+        handleStopFetchEvent()
+    }
+}
+
+def stopFetchSwitchHandler(evt) {
+    if (stopFetchSwitchValue && evt.value == stopFetchSwitchValue) {
+        handleStopFetchEvent()
+    }    
+}
+
+def stopFetchContactSensorHandler(evt) {
+     if (stopFetchContactSensorValue && evt.value == stopFetchContactSensorValue) {
+        handleStopFetchEvent()
+    }     
+}
+
+def handleStopFetchEvent() {
+    if (isStopFetchAllowed()) {
+        state.inFetchingPeriod = false
+    }
+}
+
+def isStopFetchAllowed() {
+    def isAllowed = true
+    
+    // Don't Do Day of Week Travel Check for stopping fetch. Otherwise, if configure fetching to start at 11:30 PM on a travel day, and fetching to stop at 12:30 AM the next day, which happens to not be a travel day, fetching would not stop as intended.
+    
+    // Time Restriction
+    if (allowedStopFetchStartTime && allowedStopFetchEndTime) {
+        if(!timeOfDayIsBetween(toDateTime(allowedStopFetchStartTime), toDateTime(allowedStopFetchEndTime), new Date(), location.timeZone)) {
+            isAllowed = false
+        }
+    }
+        
+    if (allowedStopFetchModes) {
+        if(!allowedStopFetchModes.contains(location.mode)) {
+            isAllowed = false
+        }
+    }
+    
+    return isAllowed
+}
+
+def fetch() {
+    if (logEnable) log.trace "Fetching Now."
+    def response = getDirections()
+    if (response) {
+        state.routes = [:]
+        def routes = response.routes
+        if (preferredRoute && preferredRouteBias) routes = biasRoutes(routes)
+        for (i=0; i<routes.size(); i++) {
+            def route = routes[i]
+            def summary = route.summary
+            def preferred = (isPreferredRoute(summary)) ? true : false
+            def duration = route.legs[0].duration_in_traffic?.value
+            def durationStr = route.legs[0].duration_in_traffic?.text
+            def distance = route.legs[0].distance.text
+            def eta = getETA(duration)
+            def requiredDeparture = getRequiredDeparture(duration)
+            def departureCountDown = ""
+            def departureCountDownStr = ""
+            if (requiredDeparture) {
+                departureCountDown = getSecondsBetween(new Date(), requiredDeparture)
+                departureCountDownStr = formatTime(departureCountDown)
+            }
+            def lastUpdated = new Date()
+            state.routes[i] = [summary: summary, duration: duration, durationStr: durationStr, eta: eta, departure: departure, preferred: preferred, departureCountDown: departureCountDown, departureCountDownStr: departureCountDownStr, lastUpdated: lastUpdated]
+        }
+        act()
+    }
+    else {
+        log.warn "No response from Google Traffic API. Check connection."
+    }
+}
+
+def isTravelDay() {
+    def dateFormat = new SimpleDateFormat("EEEE")
+    def dayOfTheWeek = dateFormat.format(new Date())
+    if (logEnable) log.debug "It is ${dayOfTheWeek}. Travel Days include ${travelDays}"
+	if(travelDays.contains(dayOfTheWeek)) {
+        if (logEnable) log.debug "Travel Days contains ${dayOfTheWeek}"
+	    return true
+	}    
+    else return false
+}
+
+// ### ACT METHODS ###
+def act() {
+    if (isPushNotification) sendPush()
+    if (isDashboardTile) parent.updateTile(tile, state.routes, app.name)    
+}
+
+def sendPush() {
+    if (pushDevice && isPushAllowed()) {
+        def routes = state.routes
+              
+        def bestRoute = routes[0].summary
+        def bestRouteDuration = routes[0].duration
+        def requiredDeparture = routes[0].departure
+        def eta = routes[0].eta
+        
+        def nextBestRoute = routes[1].summary
+        def nextBestRouteDuration = routes[1].duration
+        def fasterBy = (nextBestRouteDuration - bestRouteDuration)/60
+
+        pushDevice.deviceNotification("Take ${bestRoute}. ${eta} ETA. ${fasterBy} mins faster than ${nextBestRoute}.")
+        state.lastPushedRoute = bestRoute
+    }
+    else {
+        if (logEnable) log.info "Push Notification Restricted. Nothing Sent."
+    }
+}
+
+def isPushAllowed() {
+    def isAllowed = true
+    
+    def routes = state.routes
+    def bestRoute = routes[0].summary   
+    
+    if (onlyPushIfNonPreferred) {
+        if (preferredRoute && isPreferredRoute(bestRoute)) {
+            isAllowed = false
+            log.info "Preferred Route Best. No Push Notification Sent."      
+        }                
+    }
+    
+    if (state.lastPushedRoute == bestRoute) {
+        // Only check for push notifications that would duplicate the recommended route, as ETA may change slightly
+        isAllowed = false
+        log.info "Push Notification recommending ${bestRoute} already sent. Duplicate Push Notification Not Sent."
+    }
+    
+    return isAllowed
+}
+
+
+// ###  Route Info Methods  ###
+def getRequiredDeparture(duration) {
+    if (targetArrivalTime) {
+        def target = toDateTime(targetArrivalTime)
+        Calendar cal = Calendar.getInstance()
+        cal.setTimeZone(location.timeZone)
+        cal.set(Calendar.SECOND,(cal.get(Calendar.SECOND)-duration));
+        //cal.subtract(Calendar.SECOND, duration)
+        return cal.getTime() 
+    }    
+    else return null
+}
+
+def getETA(duration) {
+    Calendar cal = Calendar.getInstance()
+    cal.setTimeZone(location.timeZone)
+    cal.add(Calendar.SECOND, duration)
+    def arrival = cal.getTime()
+    return arrival.toString()
+}
+
+def biasRoutes(unbiasedRoutes) {
+    def preferredRouteIndex = -1
+    def routeMap = [:]
+    def biasedRoutes = [:]
+    for (i=0; i<unbiasedRoutes.size(); i++) {
+         def route = unbiasedRoutes[i]
+         def summary = route.summary
+        if (logEnable) log.debug "Route ${i} is ${summary}"
+        if (isPreferredRoute(summary)) preferredRouteIndex = i
+        routeMap[i] = route.legs[0].duration_in_traffic?.value
+    }
+    if (preferredRouteIndex <= 0) {
+    // if preferred route is either not listed or is already the best route, no bias needed, so return unbiased routes
+        return unbiasedRoutes
+    }
+    else if (preferredRouteIndex > 0) {
+    // If preferred route is listed but is not the best route, bias ordering according to bias
+        if (logEnable) log.debug "Unbiased routes: ${routeMap}"
+        routeMap[preferredRouteIndex] -= (preferredRouteBias*60)    // bias preferred route duration for ranking
+        routeMap = routeMap.sort {it.value}                        // rank routes after biasing
+        if (logEnable) log.debug "Biased route map: ${routeMap}"
+        def rank = 0
+        routeMap.each { i, j ->
+            biasedRoutes[rank] = unbiasedRoutes[i]                // reorder routes according to new rank
+            rank++
+        }
+        return biasedRoutes
+    }
+}
+
+def isPreferredRoute(route) {
+    if (preferredRoute && route.contains(preferredRoute)) return true
+    else return false
+}
+
+def getPreferredRouteSteps() {
+    if (preferredRoute && state.optionsCache) {
+        def routeOption = state.optionsCache.routes.find { it.summary.contains(preferredRoute) }
+        return routeOption.legs[0].steps
+    }
+    return null
+}
+
+def getRouteOptions() {
+    def response = getDirectionOptions()
+    if(response) {
+        def routes = response.routes
+        def options = []
+        for (i=0; i<routes.size(); i++) {
+            options.add(routes[i].summary)
+        }
+        return options
+    }
+    return null
+}
+
+
+
+// ### API Methods ###
+def getApiKey()
+{
+    return parent.getApiKey()
+}
+
+def getDirections() {
+    if (isCacheValid()) {
+        return state.cache
+    }
+    else {
+        def subUrl = "directions/json?origin=${parent.getPlaceAddress(origin)}&destination=${parent.getPlaceAddress(destination)}&key=${getApiKey()}&alternatives=true&mode=driving&departure_time=now"   
+        def response = httpGetExec(subUrl)
+        if (response) {
+            state.cache = response
+            state.cacheTime = new Date()
+        }
+        return response
+    }
+}
+
+def getDirectionOptions() {
+    if (isOptionsCacheValid()) {
+        return state.optionsCache
+    }
+    else {
+        def subUrl = "directions/json?origin=${parent.getPlaceAddress(origin)}&destination=${parent.getPlaceAddress(destination)}&key=${getApiKey()}&alternatives=true&mode=driving"   // Don't need traffic info for route options, so exclude for lower billing rate
+        log.debug subUrl
+        def response = httpGetExec(subUrl)
+        if (response) {
+            state.optionsCache = response
+            state.optionsCacheTime = new Date()
+        }
+        return response
+    }
+}
+
+def httpGetExec(subUrl)
+{
+    try
+    {
+        getString = getGoogleMapsApiUrl() + subUrl
+        httpGet(getString.replaceAll(' ', '%20'))
+        { resp ->
+            if (resp.data)
+            {
+                return resp.data
+            }
+            else {
+                log.warn "No response from Google Traffic API. Check connection."
+            }
+        }
+    }
+    catch (Exception e)
+    {
+        log.warn "httpGetExec() failed: ${e.message}"
+    }
+}
+
+// ### Cache Methods ###
+def isCacheValid() {
+    if (state.cacheTime && (getSecondsBetween(toDateTime(state.cacheTime), new Date()) > getCacheValidityDuration())) {
+        return true
+    }
+    else return false
+}
+
+def getCacheValidityDuration() {
+    return parent.getCacheValidityDurationSetting() 
+}
+
+def getOptionsCacheValidityDuration() {
+    return parent.getOptionsCacheValidityDurationSetting()
+}
+
+def isOptionsCacheValid() {
+
+    if (state.optionsCacheTime) {
+        def optionsCacheDuration = getSecondsBetween(state.optionsCacheTime, new Date())
+        if (optionsCacheDuration <= getOptionsCacheValidityDuration()) {
+            return true
+        }
+        else {
+            return false      
+        }
+    }
+    else {
+        return false    
+    }
+}
+
+// ### Utility Methods ###
+def getSecondsBetween(startDate, endDate) {
+    try {
+        def difference = endDate.getTime() - startDate.getTime()
+        return Math.round(difference/1000)
+    } catch (ex) {
+        log.error "getSecondsBetween Exception: ${ex}"
+        return 1000
+    }
+}
+
+def formatTime(duration) {
+    def hours = (duration / 3600).intValue()
+    def mins = ((duration % 3600) / 60).intValue()
+    def secs = (duration % 60).intValue()
+    return (hours > 0) ? String.format("%02d:%02d:%02d", hours, mins, secs) : String.format("%02d:%02d", mins, secs)
+}
+            
+            
+def adjustTimeBySecs(time, secs) {
+    Calendar cal = Calendar.getInstance()
+    cal.setTimeZone(location.timeZone)
+    def dateTime = toDateTime(time)
+    cal.setTime(dateTime)
+    cal.add(Calendar.SECOND, secs)
+    Date newDate = cal.getTime()
+    return newDate
+}
+
+
+
+
+/*
+// send the default array of dreams to the webpage
+app.get("/traffic", async (request, response) => {
+  //set the flag for if it's morning or not
+  let currentUtcHour = (new Date()).getHours();
+  let utcOffset = request.query.utcOffset ? parseInt(request.query.utcOffset) : -5;
+  let currentHour = currentUtcHour + utcOffset; 
+  let isMorning = currentHour < 10; 
+  console.log(`It's currently hour ${currentHour} and it ${isMorning ? 'IS' : 'IS NOT'} morning`);
+  
+  //allow the ability to force displaying the traffic anyway if the `isDisplayed` query string is passed in (mainly for debugging)
+  if(request.query.isDisplayed !== undefined) isMorning = ["True", "true", "TRUE", 1, "1"].includes(request.query.isDisplayed)
+  
+  
+  //if it's morning time, render the traffic
+  if(isMorning){
+    
+    //route1 makes the actual API call against the API using our custom method
+    let route2 = {name: "Suggested Rte", ...await getTraffic(process.env.ORIGIN1, process.env.DESTINATION1)} 
+    //route1 = {name: "Main St", duration: {text: "10 minutes", value: 600}} //or uncomment this line if you want to try it manually
+    let route1 = {name: "Alameda", duration: {text: "25 minutes", value: 1500}};
+    
+    
+    if(route2.duration.value < route1.duration.value){
+      //if route2 is faster, render that
+      renderTraffic(request, response, route2,  {color: "red"})
+    }
+    else{
+      renderTraffic(request, response, route1)
+    }
+  }
+  //otherwise, if it's not morning
+  else{
+    //redirect to our default image URL
+    response.redirect(302, process.env.DEFAULT_REDIRECT)
+  }
+});
+
+
+
+
+// listen for requests :)
+const listener = app.listen(process.env.PORT, () => {
+  console.log("Your app is listening on port " + listener.address().port);
+});
+
+
+
+
+
+
+/*************************************************
+ *  GET THE TRAFFIC RESULT FROM GOOGLE USING THIS
+ *  BE SURE TO SETUP THE API_KEY IN ORDER TO USE THIS METHOD!
+ 
+let getTraffic = async (origins, destinations) => {
+  //stubbed variable mappings - in the future, we could do some cleanup before putting it into the 'formatted' version of the variable
+  let formattedOrigins = origins; 
+  let formattedDestinations = destinations;
+  
+  console.log(`Looking for traffic from ${origins} to ${destinations}`);
+  
+  //build the API call
+  let apiUrl = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${formattedOrigins}&destinations=${formattedDestinations}&key=${process.env.API_KEY}&departure_time=now&mode=driving&units=imperial`  
+  
+  //make the API call
+  let response = await axios.get(apiUrl);
+  
+  console.log(response.data);
+  
+  return response.data.rows[0].elements[0];
+}
+
+
+
+
+/*************************************************
+ *   RENDER THE SVG IMAGE USING THIS METHOD
+
+let renderTraffic = (request, response, route, options={}) => {
+  let description = `Take ${route.name}`
+  let content = `${route.duration.text}`;
+  
+  let {color='currentColor'} = options;
+  let fillColor = request.query.fillColor || "white"
+  
+  //build the response as an SVG image or an internal redirect to a predefined image
+  response.set('Content-Type', 'image/svg+xml');
+  //viewBox="0 0 256 256" height="256" width="256" 
+  response.send(
+`<svg height="150" width="400" viewBox="-15 -30 400 150" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" fill="${fillColor}">
+<style>
+   .main-text, .description { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; }
+   .main-text {font-size: 3em;}
+   .description {font-size: 1.75em;}
+</style>
+<path x="0.2rem" y="0rem" d="${carIcon}" style="transform: scale(0.2) translateX(3rem)"></path>
+<text x="8rem" y="0.1rem" dy="1em" class="description" fill="${color}">${description}</text>
+<text x="7.7rem" y="2rem" dy="1em" class="main-text">${content}</text>
+</svg>`
+  )
+  
+}
+
+const carIcon = "M499.99 176h-59.87l-16.64-41.6C406.38 91.63 365.57 64 319.5 64h-127c-46.06 0-86.88 27.63-103.99 70.4L71.87 176H12.01C4.2 176-1.53 183.34.37 190.91l6 24C7.7 220.25 12.5 224 18.01 224h20.07C24.65 235.73 16 252.78 16 272v48c0 16.12 6.16 30.67 16 41.93V416c0 17.67 14.33 32 32 32h32c17.67 0 32-14.33 32-32v-32h256v32c0 17.67 14.33 32 32 32h32c17.67 0 32-14.33 32-32v-54.07c9.84-11.25 16-25.8 16-41.93v-48c0-19.22-8.65-36.27-22.07-48H494c5.51 0 10.31-3.75 11.64-9.09l6-24c1.89-7.57-3.84-14.91-11.65-14.91zm-352.06-17.83c7.29-18.22 24.94-30.17 44.57-30.17h127c19.63 0 37.28 11.95 44.57 30.17L384 208H128l19.93-49.83zM96 319.8c-19.2 0-32-12.76-32-31.9S76.8 256 96 256s48 28.71 48 47.85-28.8 15.95-48 15.95zm320 0c-19.2 0-48 3.19-48-15.95S396.8 256 416 256s32 12.76 32 31.9-12.8 31.9-32 31.9z";
+
+ */
