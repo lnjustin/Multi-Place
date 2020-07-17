@@ -5,12 +5,7 @@
  * TO DO: 
   - specify timeframes for "displaying" different routes/instances as the dashboard output. So, display home-to-work between 7-9am and work-to-home between 5-6pm. Maybe do this with a single child device that has an attribute describing the origin-destination pair at issue? Or one child device per vehicle (since same vehicle can't be headed to multiple destinations at the same time)?
   - Specify name of person driving, as well as the presence sensor to detect whether in car
-  - 
-  - give options for what to display on tile, either route to take or ETA
-  - parent device that is generic across child devices, for retrieving a route between two addresses (could be used by any app)
-  - in parent app, input places with addresses and icon, so child apps can select from those designated places
-  - in parent app, select people and their associated presence devices (e.g., life 360 devices) indicating where they are located
-  - in parent app, associate people with trips, so can say who is going where when
+
 
   - tile is person specific. displays whereabouts of a person, as well as travel information associated with that person. Select what presence sensors indicate person's presence at various places. May or may not use Life 360 app
 
@@ -34,23 +29,31 @@
         - turn of/off switch or push button upon arrival?
         - push notificaiton or text if going to miss target arrival by X mins?
     
-    - predeparture window starts
-        - check if need to leave before the departure window to arrive on time. If so, advance departure window temporarily.
+
+    - fetch process
+        - if in predeparture window or departure window
+            - fetch (updates state.trips[tripId].routes with best routes)
+            - perform actions
+                - if only in predeparture window, check if need to leave before predeparture window
+                - if bad traffic, send push notification or turn on/off switch
+            - update tracker tile
+            - 
+
+    - betweeen predeparture window starting and departure window ending
         - start displaying trip on tracker tile
             - display origin, vehicle, destination
             - display recommended route
             - display whether or not have departed
             - if departed, display ETA
-    - departure window starts (but haven't departed yet)
         - send push notification or turn on/off switch if bad traffic (update tile with how many minutes in advance need to leave or countdown to departure)
-        - turn on/off switch or push button if enabled
         - send text if haven't left yet and going to miss target arrival by X mins
     - predeparture sensors triggered (e.g., garage door opened) during departure window
         - send notification with route recommendation
         - but don't start trip yet (or should i let the user select an option re whether to start the trip when garage door opened?)
     - actual departure
-        - update tracker tile to show departed and to show ETA
-        - switch from checking for best route from origin to destination, to checking for best route from current location to destination, and notify if route has changed (although this could be tricky)
+        - send notification with route recommendation
+        - turn on/off switch or push button if enabled (to show departed)
+        - update tracker tile to show departed and to show ETA. Stop updating trip routes, so that the ETA will reflect the ETA from when the user actually departed
         - continue checking if going to be late and send text if so
     - departure window ends
         - stop displaying trip on tracker tile if never departed
@@ -79,15 +82,13 @@ Action Options
 --> Have different options for format of tile. That way, people can share any modifications to it and easily incorporate into the app
     
 
-    - failsafe: stop checking traffic if haven't arrived after certain time (so doesn't keep making API calls if error happens)
     - tap on dashboard tile brings up larger display with map, address details, etc.
 
 
     TO DO:
         - Handle delete vehicle settings when delete person, and vice versa
         - Handle if leave before departure window?
-            - at the start of the departure window, do i check to see if the person has already left the origin or if the origin was the last place left and it was fairly recently, suggesting that they left early?
-
+        - Handle if never arrive at destination of trip? trip timeout?
 
     THINKING PAD
         - may show both place icon and vehicle icon if at both at the same time?
@@ -111,14 +112,20 @@ definition(
     usesThirdPartyAuthentication: true)
 
 @Field Integer fetchIntervalDefault = 5    // default number of minutes between checks of travel conditions during the departure window (does not apply to early checks before departure window)
-@Field Integer earlyFetchMinsDefault = 30    // default number of minutes before earliest departure time to check travel conditions
+@Field Integer tripPreCheckMinsDefault = 30    // default number of minutes before earliest departure time to check travel conditions
 @Field Integer postArrivalDisplayMinsDefault = 10 // default number of minutes to display trip after arrival
-@Field Integer cacheValidityDurationDefault = 120
+@Field Integer cacheValidityDurationDefault = 120  // default number of seconds to cache directions/routes
 @Field Integer optionsCacheValidityDurationDefault = 900
+@Field String timeFormatDefault = "12 Hour"
+@Field Integer tileScaleDefault = 100
+@Field Boolean isPreferredRouteDisplayed = false
+@Field String circleBackgroundColor = "#808080"
+@Field Integer trafficDelayThreshold = 10
 
 mappings
 {
-    path("/tile/:personId") { action: [ GET: "buildTile"] }
+    path("/multiplace/html/:personId") { action: [ GET: "fetchHtmlTracker"] }
+    path("/multiplace/svg/:personId") { action: [ GET: "fetchSvgTracker"] }
 }
 
 preferences {
@@ -129,6 +136,7 @@ preferences {
      page name: "TripsPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
      page name: "RestrictionsPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
      page name: "TravelAPIPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
+     page name: "TrackerPage", title: "", install: false, uninstall: false, nextPage: "mainPage"
      page name: "AdvancedPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
 }
 
@@ -150,17 +158,12 @@ def mainPage() {
                     href(name: "TripsPage", title: "Manage Trips", description: getTripEnumList(), required: false, page: "TripsPage")
                     href(name: "RestrictionsPage", title: "Manage Travel Advisor Restrictions", required: false, page: "RestrictionsPage")
                     href(name: "TravelAPIPage", title: "Manage Travel API Access", required: false, page: "TravelAPIPage")
+                    href(name: "TrackerPage", title: "Manage Tracker Settings", required: false, page: "TrackerPage")
                     href(name: "AdvancedPage", title: "Manage Advanced Settings", required: false, page: "AdvancedPage")
                 }
 			}
-            
-            section
-            {
-               paragraph getInterface("line","")
+    }
 
-                input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
-            }
-	}
 }
 
 def TravelAPIPage() {
@@ -280,7 +283,7 @@ def addPerson(String id) {
     if (!state.people) state.people = [:]
     def currentPlaceMap = [name: null, id: null, arrival: null]
     def currentVehicleMap = [id: null, arrival: null]
-    def currentTripMap = [id: null, isPreDeparture: null, departureTime: null, recommendedRoute: null,] // map for details about active trip
+    def currentTripMap = [id: null, departureTime: null, recommendedRoute: null, eta: null, hasPushedLateNotice: null] // map for details about active trip
     def previousTripMap = [id: null, departureTime: null, arrivalTime: null] // map for details about last trip
     def previousPlaceMap = [name: null, id: null, arrival: null, departure: null]
     def previousVehicleMap = [id: null, arrival: null, departure: null]
@@ -290,6 +293,23 @@ def addPerson(String id) {
     def personMap = [current: currentMap, previous: previousMap, life360: life360Map, places: null, vehicles: null]
         // so use like state.people.persondId.current.place.name
     state.people[id] = personMap
+}
+
+def getPlaceOfPresenceById(String personId) {
+    return state.people[personId].current.place.id
+}
+
+def getPlaceOfPresenceByName(String personId) {
+    return state.people[personId].current.place.name
+}
+
+def getIdOfVehiclePresentIn(String personId) {
+    return state.people[personId].current.vehicle.id
+}
+
+
+def getEtaOfCurrentTrip(String personId) {
+    return state.people[personId].current.trip.eta
 }
 
 String getIdOfPersonWithName(String name) {
@@ -306,14 +326,20 @@ String getIdOfPersonWithName(String name) {
 }
 
 
-String getNameOfPersonWithId(String id) {
-    return settings["person${id}Name"]
+String getNameOfPersonWithId(String personId) {
+    return settings["person${personId}Name"]
 }
+
+String getPersonAvatar(String personId) {
+    return settings["person${personId}Avatar"]
+}
+
 
 Boolean isDriving(String personId) {
     if (settings["person${id}Life360"]) return settings["person${id}Life360"].isDriving
     else return null
 }
+
 
 def deletePerson(String nameToDelete) {
     def idToDelete = getIdOfPersonWithName(nameToDelete)
@@ -620,6 +646,10 @@ String getVehicleIcon(String name) {
     return settings["vehicle${id}Icon"]
 }
 
+String getVehicleIconById(String vehicleId) {
+    return settings["vehicle${vehicleId}Icon"]
+}
+
 def addVehicle(String id) {
     if (!state.vehicles) state.vehicles = []
     state.vehicles.add(id)
@@ -805,6 +835,10 @@ String getPlaceIcon(String name) {
     return settings["place${id}Icon"]
 }
 
+String getPlaceIconById(String placeId) {
+    return settings["place${placeId}Icon"]
+}
+
 def addPlace(String id) {
     if (!state.places) state.places = []
     state.places.add(id)
@@ -854,7 +888,7 @@ Boolean isRestricted() {
     
     if (restrictedModes) {
         if(restrictedModes.contains(location.mode)) {
-            if (logEnable) log.debug "Mode Check Failed."
+            logDebug("Mode Check Failed.")
             isRestricted = true
         }
     }
@@ -866,13 +900,28 @@ def AdvancedPage() {
     dynamicPage(name: "AdvancedPage") {
         section {
             paragraph getInterface("header", " Advanced Settings")
-            input name: "fetchInterval", type: "number", title: "Interval (mins) for Checking Travel Conditions", required: true, defaultValue: fetchIntervalDefault
-            input name: "earlyFetchMins", type: "number", title: "Number of Minutes Before Earliest Departure Time to Check Travel Conditions", required: true, defaultValue: earlyFetchMinsDefault
-            input name: "postArrivalDisplayMins", type: "number", title: "Number of Minutes to Display Trip After Arrival", required: true, defaultValue: postArrivalDisplayMinsDefault
-            paragraph "Smart Travel caches the response from Google Directions and considers the cached response valid for the duration selected here. Increasing the validity time reduces the number of API calls. Decreasing the validity time increases responsiveness to traffic fluctuations."
+            
+            paragraph "${app.name} caches the response from Google Directions and considers the cached response valid for the duration selected here. Increasing the validity time reduces the number of API calls. Decreasing the validity time increases responsiveness to traffic fluctuations."
             input name: "cacheValidityDuration", type: "number", title: "Duration of Directions Cache (Secs)", required: false, defaultValue: cacheValidityDurationDefault
             paragraph "${app.name} also caches the response from Google Directions for showing the route options available in the app. Set for as long as a configuration session may last."
             input name: "optionsCacheValidityDuration", type: "number", title: "Duration of Options Cache (Secs)", required: false, defaultValue: optionsCacheValidityDurationDefault
+            input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: false
+        }
+    }   
+}
+
+def TrackerPage() {
+    dynamicPage(name: "TrackerPage") {
+        section {
+            paragraph getInterface("header", " Tracker Settings")
+            input name: "tileScale", type: "number", title: "Tracker Scale (%)", required: false, defaultValue: tileScaleDefault
+            input name: "circleBackgroundColor", type: "text", title: "Circle background color", required: false, defaultValue: circleBackgroundColorDefault
+            input name: "timeFormat", type: "enum", title: "Time Format", options: ["12 Hour", "24 Hour"], required: false, defaultValue: timeFormatDefault
+            input name: "trafficDelayThreshold", type: "number", title: "Consider traffic bad when traffic delays arrival by how many more minutes than usual?", required: false, defaultValue: trafficDelayThresholdDefault
+            input name: "isPreferredRouteDisplayed", type: "boolean", title: "Display recommended route even if recommend preferred route?", required: false, defaultValue: false
+            input name: "fetchInterval", type: "number", title: "Interval (mins) for Checking Travel Conditions", required: false, defaultValue: fetchIntervalDefault
+            input name: "tripPreCheckMins", type: "number", title: "Number of Minutes Before Earliest Departure Time to Check Travel Conditions", required: false, defaultValue: tripPreCheckMinsDefault
+            input name: "postArrivalDisplayMins", type: "number", title: "Number of Minutes to Display Trip After Arrival", required: false, defaultValue: postArrivalDisplayMinsDefault
         }
     }   
 }
@@ -914,14 +963,14 @@ def scheduleTimeTriggers() {
             def earliestDeparture = settings["trip${tripId}EarliestDepartureTime"]
             def latestDeparture = settings["trip${tripId}LatestDepartureTime"]
             if (earliestDeparture) {
-                def earlyFetchTime = adjustTimeBySecs(earliestDeparture, getEarlyFetchMinsSetting()*60)
-                schedule(earlyFetchTime, earlyTripFetchHandler, [data: [tripId: tripId]])
+                def tripPreCheckTime = getPreCheckTime(tripId)
+                schedule(tripPreCheckTime, startTripPreCheckHandler, [data: [tripId: tripId], overwrite: false])
             }
             if (earliestDeparture) {
-                schedule(earliestDeparture, startDepartureWindowHandler, [data: [tripId: tripId]])
+                schedule(earliestDeparture, startDepartureWindowHandler, [data: [tripId: tripId], overwrite: false])
             }
             if (latestDeparture) {
-                schedule(latestDeparture, endDepartureWindowHandler, [data: [tripId: tripId]])
+                schedule(latestDeparture, endDepartureWindowHandler, [data: [tripId: tripId], overwrite: false])
             }   
         }
     }
@@ -1001,18 +1050,21 @@ def garageDoorHandler(evt) {
 
 def handlePossiblePreDeparture(String placeId) {
     state.trips.each { tripId, trip ->
-         if (isPlaceTripOrigin(placeId, tripId) && areDepartureConditionsMet(tripId)) {
-              for (personName in settings["trip${tripId}People"]) {
-                   def isPreDeparture = false
-                   def personId = getIdOfPersonWithName(personName)
-                   if (!isPersonOnTrip(personId)) {  // person has not left already so as to constitute an actual predeparture event (as opposed to someone opening the garage door right after departure)
-                       startTripPreDepartureForPerson(personId, tripId)
-                       isPreDeparture = true
-                   }
-                   if (isPreDeparture) performPreDepartureActionsForTrip(tripId) // perform predeparture actions for trip only once, since predeparture actions are not specific to a certain person
-              }            
+         if (isPlaceTripOrigin(placeId, tripId) && areDepartureConditionsMet(tripId) && !hasTripStarted(tripId)) {
+             performPreDepartureActionsForTrip(tripId)        
          }
     }    
+}
+
+def hasTripStarted(String tripId) {
+    def isTripStarted = false
+    for (personName in settings["trip${tripId}People"]) {
+        def personId = getIdOfPersonWithName(personName)
+        if (isPersonOnTrip(personId, tripId)) {
+            isTripStarted = true
+        }
+    }   
+    return isTripStarted
 }
 
 def isPlaceTripOrigin(String placeId, String tripId) {
@@ -1052,40 +1104,443 @@ def isSwitchForPlace(String placeId, device) {
     return false
 }
 
-def earlyTripFetchHandler(data) {
+def startTripPreCheckHandler(data) {
     def tripId = data.tripId
+    logDebug("Starting Pre-Check for Trip ${tripId}")
+    if (areDepartureConditionsMet(tripId, true) && !hasTripStarted(tripId)) {
+        logDebug("Starting Trip Pre-Check for trip ${tripId}")
+        for (personName in settings["trip${tripId}People"]) {
+            def personId = getIdOfPersonWithName(personName)
+            state.people[personId]?.current.trip.id = tripId
+            state.people[personId]?.current.trip.departureTime = null      
+            state.people[personId]?.current.trip.recommendedRoute = null
+            state.people[personId]?.current.trip.eta = null
+            state.people[personId]?.current.trip.hasPushedLateNotice = false
+            updateTripPreCheck([tripId: tripId])
+        }
+    }
+}
+
+def updateTripPreCheck(data) {
+    def tripId = data.tripId
+    logDebug("In Update Trip Pre-Check for trip ${tripId}") 
+    if (areDepartureConditionsMet(tripId, true) && !hasTripStarted(tripId)) {
+        // perform check throughout the predeparture and departure window, until the trip starts (i.e., a person departs). Once a person departs on the trip, stop updating from this function.
+         logDebug("Updating Trip Pre-Check for trip ${tripId}")   
+        updateTrackersForTripPeople(tripId)
+        pushLateNotification(tripId)
+        runIn(getFetchIntervalSetting()*60, "updateTripPreCheck", [data: [tripId: tripId]])
+    }
+    else {
+        logDebug("Either departure window ended or trip started. No more updates for now.")
+    }
+}
+
+def updateTrackersForTripPeople(String tripId) {
+    for (personName in settings["trip${tripId}People"]) {
+        def personId = getIdOfPersonWithName(personName)
+        updateTracker(personId)
+    }    
+}
+
+def startTripForPerson(String personId, String tripId) {
+    logDebug("Starting trip ${tripId} for person ${personId}")
+    state.people[personId]?.current.trip.id = tripId
+    state.people[personId]?.current.trip.departureTime = new Date().getTime()
+    
+    def routes = getTripWithRoutes(tripId, true).routes // force update of route information 
+    state.people[personId]?.current.trip.eta = getETADate(routes[0].duration).getTime()
+     
+    performDepartureActionsForTrip(personId, tripId)
+}
+
+def endCurrentTripForPerson(String personId) {
+    logDebug("Ending trip ${state.people[personId]?.current.trip.id} for person ${personId}")
+    performArrivalActionsForTrip(personId, state.people[personId]?.current.trip.id) 
+    
+    state.people[personId]?.previous.trip.id = state.people[personId]?.current.trip.id
+    state.people[personId]?.previous.trip.departureTime = state.people[personId]?.current.trip.departureTime
+    state.people[personId]?.previous.trip.arrivalTime = new Date().getTime()            
+    state.people[personId]?.current.trip.id = null
+    state.people[personId]?.current.trip.eta = null
+    state.people[personId]?.current.trip.departureTime = null      
+    state.people[personId]?.current.trip.recommendedRoute = null
+    state.people[personId]?.current.trip.hasPushedLateNotice = null
+    
+    runIn(getPostArrivalDisplayMinsSetting()*60, "stopPostArrivalDisplay", [data: [personId: personId]])
+}
+
+def stopPostArrivalDisplay(data) {
+    String personId = data.personId
+    updateTracker(personId)
 }
 
 def startDepartureWindowHandler(data) {
     def tripId = data.tripId
+    // TO DO: determine if anything to do here?
 }
-
 
 def endDepartureWindowHandler(data) {
     def tripId = data.tripId
+    for (personName in settings["trip${tripId}People"]) {
+        def personId = getIdOfPersonWithName(personName)
+        if (state.people[personId]?.current.trip.id == tripId && state.people[personId]?.current.trip.departureTime == null) {
+         // person never left on the trip, so cancel trip
+            state.people[personId]?.current.trip.id = null
+            state.people[personId]?.current.trip.departureTime = null      
+            state.people[personId]?.current.trip.recommendedRoute = null 
+            state.people[personId]?.current.trip.eta = null 
+            state.people[personId]?.current.trip.hasPushedLateNotice = false
+            updateTracker(personId)
+        }
+    }
 }
 
 def performPreDepartureActionsForTrip(String tripId) {
-    
+    pushRouteRecommendation(tripId)
 }
 
 def performDepartureActionsForTrip(String personId, String tripId) {
-    
+    logDebug("Performing Departure Actions for trip ${tripId}")
+    pushRouteRecommendation(tripId, personId)
+    pushLateNotification(tripId)
+    controlDepartureSwitches(tripId)
+}
+
+def controlDepartureSwitches(String tripId) {
+    if (settings["trip${tripId}DepartureSwitches"] && settings["trip${tripId}DepartureSwitchesOnorOff"]) {
+        def cmd = settings["trip${tripId}DepartureSwitchesOnorOff"]
+        settings["trip${tripId}DepartureSwitches"].each { theSwitch ->
+                theSwitch."${cmd}"()
+        }
+    }
 }
 
 def performArrivalActionsForTrip(String personId, String tripId) {
+    controlArrivalSwitches(tripId)
+    pushArrivalNotification(tripId, personId)
+}
+
+def controlArrivalSwitches(String tripId) {
+    if (settings["trip${tripId}ArrivalSwitches"] && settings["trip${tripId}ArrivalSwitchesOnorOff"]) {
+        def cmd = settings["trip${tripId}ArrivalSwitchesOnorOff"]
+        settings["trip${tripId}ArrivalSwitches"].each { theSwitch ->
+                theSwitch."${cmd}"()
+        }
+    }
+}
+
+def pushLateNotification(String tripId) {
+    // this method is called before the trip has started, or upon the trip starting, but not after the trip has started
+    if (isLateNotificationConfigured(tripId)) {
+        def routes = getTripWithRoutes(tripId).routes
+        if (routes) {
+            logDebug("retrieved routes: ${routes}")
+            def bestRouteDuration = routes[0].duration
+            def eta = getETADate(routes[0].duration)
+            def etaStr = extractTimeFromDate(eta)
+            def targetArrival = toDateTime(settings["trip${tripId}TargetArrivalTime"])
+            if (eta.after(targetArrival)) {
+                def secondsLate = getSecondsBetween(targetArrival, eta)
+                def secsLateThreshold = settings["trip${tripId}LateNotificationMins"]*60
+                if (secondsLate >= secsLateThreshold) {
+                    for (personName in settings["trip${tripId}People"]) {
+                        def personId = getIdOfPersonWithName(personName)
+                        if (state.people[personId].current.trip.hasPushedLateNotice == false) {
+                            if (state.people[personId]?.current.trip.eta != null) {
+                                settings["trip${tripId}PushDevicesIfLate"].deviceNotification("${personName} just left ${settings["trip${tripId}Origin"]}, but is running late. ${personName} expects to arrive at ${settings["trip${tripId}Destination"]} around ${etaStr}.")
+                            }
+                            else {
+                                settings["trip${tripId}PushDevicesIfLate"].deviceNotification("${personName} has not yet left ${settings["trip${tripId}Origin"]}, and is running late. If ${personName} were able to leave now for ${settings["trip${tripId}Destination"]}, estimated time of arrival would be around ${etaStr}.")
+                            }
+                            state.people[personId].current.trip.hasPushedLateNotice = true 
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+def isLateNotificationConfigured(String tripId) {
+    if (settings["trip${tripId}PushDevicesIfLate"] && settings["trip${tripId}TargetArrivalTime"]) return true
+    else return false
+}   
+
+def pushRouteRecommendation(String tripId, String personId = null) {
+    if (isDeparturePushConfigured(tripId) && isDeparturePushAllowed(tripId, personId)) {
+        def routes = getTripWithRoutes(tripId).routes
+        if (routes) {
+            def bestRoute = routes[0].summary
+            def bestRouteDuration = routes[0].duration
+            def etaDate = getETADate(routes[0].duration)
+            def eta = extractTimeFromDate(etaDate)
+            def isPreferred = isPreferredRoute(tripId, bestRoute)
+        
+            def nextBestRoute = routes[1].summary
+            def nextBestRouteDuration = routes[1].duration
+            def fasterBy = Math.round((nextBestRouteDuration - bestRouteDuration)/60)
+
+            if (isPreferred && fasterBy < 0) {
+                settings["trip${tripId}DeparturePushDevices"].deviceNotification("Take ${bestRoute} as the preferred route, for ${eta} arrival. But ${nextBestRoute} is ${fasterBy} mins faster.")
+            }
+            else {
+                settings["trip${tripId}DeparturePushDevices"].deviceNotification("Take ${bestRoute} for ${eta} arrival. Faster than ${nextBestRoute} by ${fasterBy} mins.")
+            }
+        
+            if (personId != null) state.people[personId].current.trip.recommendedRoute = bestRoute
+            else {
+                 // predeparture recommendation that is not specific to a person
+                for (personName in settings["trip${tripId}People"]) {
+                    def id = getIdOfPersonWithName(personName)
+                    state.people[id].current.trip.recommendedRoute = bestRoute
+               }            
+            }
+        }
+    }
+}
+
+def isDeparturePushConfigured(String tripId) {
+    if (settings["trip${tripId}DeparturePushDevices"]) return true
+    else return false
+}
+
+def isDeparturePushAllowed(String tripId, String personId = null) {
+    def isAllowed = true
     
+    def routes = getTripWithRoutes(tripId).routes
+    def bestRoute = routes[0].summary   
+    
+    if (settings["trip${tripId}OnlyPushIfNonPreferred"] && settings["trip${tripId}PreferredRoute"]) {
+        if (isPreferredRoute(tripId, bestRoute)) {
+            isAllowed = false
+            log.info "Preferred Route Best. No Push Notification To Be Sent."      
+        }                
+    }
+    
+    if (personId != null) {
+        if (state.people[personId].current.trip.recommendedRoute != null && state.people[personId].current.trip.recommendedRoute == bestRoute) {
+            isAllowed = false
+            log.info "Route already recommended to person. No Push Notification To Be Sent."
+        }
+    }
+    else {
+        // predeparture push taking place. Only send push if no person has already been recommended a route.
+        for (personName in settings["trip${tripId}People"]) {
+            def id = getIdOfPersonWithName(personName)
+            if (state.people[id].current.trip.recommendedRoute != null && state.people[id].current.trip.recommendedRoute == bestRoute) {
+                isAllowed = false
+                log.info "Route already recommended. No Push Notification To Be Sent."
+           }
+        }
+    }
+    return isAllowed
+}
+
+
+def pushArrivalNotification(String tripId, String personId) {
+    if (isArrivalPushConfigured(tripId)) {
+        def destination = settings["trip${tripId}Destination"]
+        def arrivalTime = extractTimeFromDate(new Date())
+        def personName = getNameOfPersonWithId(personId)
+        settings["trip${tripId}ArrivalPushDevices"].deviceNotification("${personName} arrived at ${destination} at ${arrivalTime}.")
+    }
+}
+
+
+def isArrivalPushConfigured(String tripId) {
+    if (settings["trip${tripId}ArrivalPushDevices"]) return true
+    else return false
+}
+
+def isInPostArrivalDisplayWindow(String personId) {
+    def inPostArrivalDisplayWindow = false
+    if (state.people[personId]?.previous.trip.id != null && state.people[personId]?.previous.trip.arrivalTime != null) {
+        def postArrivalSecs = getPostArrivalDisplayMinsSetting()*60
+        def secsSinceArrival = getSecondsSince(state.people[personId]?.previous.trip.arrivalTime)
+        logDebug("PersonId ${personId} Arrived on tripID ${state.people[personId]?.previous.trip.id} ${secsSinceArrival} seconds ago.")
+        if (secsSinceArrival < postArrivalSecs) {
+            def destinationName = getDestination(state.people[personId]?.previous.trip.id)
+            def destinationId = getIdOfPlaceWithName(destinationName)
+            if (destinationId == state.people[personId]?.current.place.id) {
+                // only display post arrival if still at destination of trip
+                inPostArrivalDisplayWindow = true
+            }
+        }
+    }
+    return inPostArrivalDisplayWindow
 }
 
 def updateTracker(String personId) {
+    logDebug("Updating tracker for personId ${personId}")
     def tracker = getTracker(personId)
     if (tracker) {
-        // update from state
         
-        // option: show life360 address if person is not at any place (e.g., icon showing not at home, and address where at)
+        def scale = getTileScaleSetting()/100
+        def containerWidth = Math.round(125*scale)
+        def containerHeight = Math.round(125*scale)
+        def avatarSize = Math.round(100*scale)
+        def circleSize = Math.round(42*scale)
+        def presenceCircleLeft = Math.round(50*scale)
+        def presenceCircleTop = Math.round(-37*scale)
+        def presenceCircleLeftTrip = Math.round(-50*scale)
+        def presenceCircleTopTrip = Math.round(-37*scale)
+        def destCircleLeftTrip = Math.round(50*scale)
+        def destCircleTopTrip = Math.round(-80*scale)
+        def textTop = Math.round(-37*scale)
+        def textBottom = Math.round(-85*scale)
+        def textBottomSingle = Math.round(-45*scale)
+        def durationTop = Math.round(-145*scale)
+        def durationLeft = Math.round(43*scale)
+    
+        def circleColor = getCircleBackgroundColor()
         
-        // show any previous trip for X minutes according to getPostArrivalDisplayMinsSettings()*60
+       def placeOfPresenceById = getPlaceOfPresenceById(personId)
+       def placeOfPresenceByName = getPlaceOfPresenceByName(personId)
+       def vehicleIdPresentIn = getIdOfVehiclePresentIn(personId)
+            
+       def presenceIcon = null  
+       // generally, prioritize showing presence in vehicle over presence at place. Except when in post arrival display window, which is handled below
+       if (vehicleIdPresentIn != null) presenceIcon = getVehicleIconById(vehicleIdPresentIn)
+       else if (placeOfPresenceById != null) presenceIcon = getPlaceIconById(placeOfPresenceById)
+       // TO DO: icon if not present anywhere
+
+        // write html with as few characters as possible, to keep under 1024 (tile size limit in Hubitat)
+
+        String style = '<style type="text/css">'
+        style += '@keyframes f { from {background: ' + circleColor + ';} to {background: white;}}'
+        style += '@keyframes fR { from {background: red;} to {background: white;}}'
+        style += '.r {position:relative;text-align:center;}'
+        style += '.txt {font:bold Oswald, sans-serif;}'
+        style += '.rTxt {font-color: red;}'
+        style += '.cir {z-index: 2;width:' + circleSize + 'px;height:' + circleSize + 'px;background: ' + circleColor + '; border:1px solid black;border-radius:50%;}'
+        style += '</style>'   
+        logDebug("Style length is ${style.length()}")
+        
+       String html = style
+       html += '<div class="r" style="width:' + containerWidth + ';height:' + containerHeight + 'px;">'
+       html += '<div><img class="r" style="width:' + avatarSize + 'px;height:' + avatarSize + 'px;display:block;margin:auto;" src="' + getPersonAvatar(personId) + '"></div>'
+
+       if (state.people[personId]?.current.trip.id != null) {
+           // show current trip
+           
+           def tripId = state.people[personId]?.current.trip.id
+           logDebug("Tracker for personId ${personId} with active tripID ${tripId}")
+           def routes = getTripWithRoutes(tripId).routes
+           logDebug("Retrieved routes for trip ${tripId} are: ${routes}. Route 0 is ${routes[0]}. Route '0' is ${routes['0']}")
+           def bestRoute = routes[0].summary
+           def bestRouteDuration = routes[0].duration
+           def bestRouteTrafficDelay = routes[0].trafficDelay
+           def relativeTrafficDelay = bestRouteTrafficDelay - state.trips[tripId].averageTrafficDelay
+           
+           def isPreferred = isPreferredRoute(tripId, bestRoute)
+           def isPreferredRouteSet = isPreferredRouteSet(tripId)
+           
+           def routeAlert = false
+           if (relativeTrafficDelay > gettrafficDelayThresholdSetting()) routeAlert = true
+           if (isPreferredRouteSet && !isPreferred) routeAlert = true
+           
+           html += '<div><img class="r cir" style="left:' + presenceCircleLeftTrip + 'px;top:' + presenceCircleTopTrip + 'px;" src="' + presenceIcon + '"></div>'           
+           html += '<div><img class="r cir" style="left:' + destCircleLeftTrip + 'px; top:' + destCircleTopTrip + 'px;animation: ' + ((routeAlert) ? "fR" : "f") + ' 2s infinite alternate;" src="' + getDestinationIcon(tripId) + '"></div>'
+           
+           if (isPersonOnTrip(personId)) {
+               // display ETA if already departed on trip
+
+               def etaUtc = getEtaOfCurrentTrip(personId)
+               def etaDate = new Date(etaUtc)
+               
+               def lateAlert = false
+               def target = settings["trip${tripId}TargetArrivalTime"]
+               if (target) {
+                   def targetArrival = toDateTime(target)
+                   if (etaDate.after(targetArrival)) {
+                       def secondsLate = getSecondsBetween(targetArrival, etaDate)
+                       def secsLateThreshold = settings["trip${tripId}LateNotificationMins"]*60
+                       if (secondsLate >= secsLateThreshold) lateAlert = true
+                   }
+               }
+               
+               html += '<div style="left:0px;top:' + textBottom + 'px;font-size:1.5vw;" class="r txt' + ((lateAlert) ? " rTxt" : "") + '">' + extractTimeFromDate(etaDate) + '</div>'
+           }
+           else {
+               // otherwise display expected duration of trip
+               html += '<div style="left: ' + durationLeft + 'px;top:' + durationTop + 'px;font-size:0.8vw;" class="r txt' + ((routeAlert) ? " rTxt" : "") + '">' + formatTimeMins(bestRouteDuration) + '</div>' 
+           
+               if (!isPreferredRouteSet || (isPreferredRouteSet && !isPreferred) || (isPreferredRouteSet && isPreferred && getIsPreferredRouteDisplayedSetting())) {
+                   html += '<div style="left:0px;top:' + textBottom + 'px;font-size:0.8vw;" class="r txt' + ((routeAlert) ? " rTxt" : "") + '">' + bestRoute + '</div>' 
+                   
+                   
+        // TO DO: show countdown to departure to arrive on time?
+        //    def requiredDeparture = getRequiredDeparture(tripId, duration)
+        //    departureCountDown = getSecondsBetween(new Date(), requiredDeparture)
+        //    departureCountDownStr = formatTime(departureCountDown)
+               }      
+           }
+               
+       }
+        else { 
+            def isPostArrival = isInPostArrivalDisplayWindow(personId)
+            // in post arrival display window for a period of time after arrive at the destination of a trip, as long as the person is still at that destination.
+            if (isPostArrival) {
+                // while in post arrival display window, prioritize display of presence at the trip's destination, even if the person is still in the vehicle. 
+                def destinationName = getDestination(state.people[personId]?.previous.trip.id)
+                def destinationId = getIdOfPlaceWithName(destinationName)
+                presenceIcon = getPlaceIconById(destinationId)
+                logDebug("Prioritizing presence at previous trip's destination over presence in vehicle, on the assumption that the person has just arrived at the destination and will be exiting the vehicle soon. So, go ahead and proactively update presence to provide a more real-time arrival indication.")
+            }
+            html += '<div><img class="r cir" style="left:' + presenceCircleLeft + 'px;top:' + presenceCircleTop + 'px;' + ((isPostArrival) ? "background:green;" : "") + '" src="' + presenceIcon + '"></div>' 
+             if (isPostArrival) {
+                 // show arrival at destination of any previous trip for X minutes according to getPostArrivalDisplayMinsSetting()*60
+                 def tripId = state.people[personId]?.previous.trip.id
+                 def arrivalUTCTime = state.people[personId]?.previous.trip.arrivalTime
+                 def arrivalDateTime = new Date(arrivalUTCTime)
+                 def lateAlert = false
+                 def target = settings["trip${tripId}TargetArrivalTime"]
+                 if (target) {
+                     def targetArrival = toDateTime(target)
+                     if (arrivalDateTime.after(targetArrival)) {
+                         def secondsLate = getSecondsBetween(targetArrival, arrivalDateTime)
+                         def secsLateThreshold = settings["trip${tripId}LateNotificationMins"]*60
+                         if (secondsLate >= secsLateThreshold) lateAlert = true
+                     }
+                 }
+                
+                 html += '<div style="left:0px;top:' + textBottomSingle + 'px;font-size:1.5vw;" class="r txt' + ((lateAlert) ? " rTxt" : "") + '">' + extractTimeFromDate(arrivalDateTime) + '</div>'
+             }
+            else if (placeOfPresenceById == null) {
+                html += '<div class="r txt" style="left:0px;top:' + textBottomSingle + 'px;font-size:0.8vw;">' + placeOfPresenceByName + '</div>'    
+            }
+        }
+        html += '</div>'
+        logDebug("Tracker length is ${html.length()}")
+        tracker.sendEvent(name: 'tracker', value: html)
+        tracker.sendEvent(name: 'presence', value: placeOfPresenceByName)  
+
+
+        // show sleep score when integreate Withings Sleep
     }   
+}
+
+def fetchSvgTracker() {
+    def personId = params.personId
+    def svg = null
+     // TO DO: build svg
+    render contentType: "image/svg+xml", data: svg, status: 200
+}
+
+def fetchHtmlTracker() {
+    // TO DO: return html
+    def personId = params.personId
+    def networkID = getTrackerId(personId)
+    def child = getChildDevice(networkID)
+    def svg = null
+    if (child) {
+        svg = child.tracker
+    }
+    else {
+        log.warn "No Tracker Device Found for personId ${personId}. No tracker fetched."
+    }
+    render contentType: "image/svg+xml", data: svg, status: 200
 }
 
 def handlePlaceChange(String personId) {
@@ -1093,7 +1548,7 @@ def handlePlaceChange(String personId) {
     
     // Did the place change start a trip?
     state.trips.each { tripId, trip ->
-        if (isTripPerson(personId, tripId) && didDepartOrigin(personId, tripId) && areDepartureConditionsMet(tripId) && inTripVehicle(personId, tripId) && !isTripInProgress(personId, tripId)) {
+        if (isTripPerson(personId, tripId) && didDepartOrigin(personId, tripId) && areDepartureConditionsMet(tripId) && inTripVehicle(personId, tripId) && !isPersonOnTrip(personId, tripId)) {
             // trip just started because (i) person scheduled for trip (ii) left origin; (iii) while departure conditions met; (iv) within a vehicle specified for the trip; and (iv) trip was not already in progress
             startTripForPerson(personId, tripId)
         }
@@ -1110,8 +1565,11 @@ def handlePlaceChange(String personId) {
     updateTracker(personId)
 }
 
-Boolean isPersonOnTrip(String personId) {
-    return (state.people[personId]?.current.trip.id != null) ? true : false
+Boolean isPersonOnTrip(String personId, String tripId=null) {
+    if (tripId != null) {
+        return (state.people[personId]?.current.trip.id == tripId && state.people[personId]?.current.trip.departureTime != null) ? true : false  
+    }
+    else return (state.people[personId]?.current.trip.id != null && state.people[personId]?.current.trip.departureTime != null) ? true : false
 }
 
 Boolean isTripPerson(String personId, String tripId) {
@@ -1120,12 +1578,6 @@ Boolean isTripPerson(String personId, String tripId) {
 	    return true
 	}    
     else return false    
-}
-
-Boolean isTripInProgress(String personId, String tripId) {
-    def inProgress = false
-    if (state.people[personId]?.current.trip.id == tripId) inProgress = true
-    return inProgress
 }
 
 def inTripVehicle(String personId, String tripId) {
@@ -1149,41 +1601,56 @@ boolean didDepartOrigin(String personId, String tripId) {
 }
                 
                 
-Boolean areDepartureConditionsMet(String tripId, Boolean isPreDepartureIncluded=false) {
-    if (inDepartureWindow(tripId, isPredepartureIncluded) && !isRestricted()) return true
+Boolean areDepartureConditionsMet(String tripId, Boolean isTripPreCheckIncluded=false) {
+    if (inDepartureWindow(tripId, isTripPreCheckIncluded) && !isRestricted()) return true
     else return false
 }
 
-Boolean inDepartureWindow(String tripId, Boolean isPredepartureIncluded=false) {
+Boolean inDepartureWindow(String tripId, Boolean isTripPreCheckIncluded=false) {
     Boolean inWindow = true
     
     // Day of Week Travel Check
-    if(!isTripDay()) {
-        if (logEnable) log.debug "Trip Day Check Failed."
+    if(!isTripDay(tripId)) {
+        logDebug("Trip Day Check Failed.")
 	    inWindow = false
     }
     
     // Time Window
     if (settings["trip${tripId}EarliestDepartureTime"] && settings["trip${tripId}LatestDepartureTime"]) {
-        def preDepartureTime = adjustTimeBySecs(settings["trip${tripId}EarliestDepartureTime"], getEarlyFetchMinsSetting()*60)
-        def windowStart = isPredepartureIncluded ? preDepartureTime : toDateTime(settings["trip${tripId}EarliestDepartureTime"])
-        if(!timeOfDayIsBetween(windowStart, toDateTime(settings["trip${tripId}LatestDepartureTime"]), new Date(), location.timeZone)) {
-            if (logEnable) log.debug "Time Check Failed."
+        def tripPreCheckTime = getPreCheckTime(tripId)
+        logDebug("Trip PreCheck time for trip ${tripId} is ${tripPreCheckTime}. isTripPreCheckIncluded value is ${isTripPreCheckIncluded}")
+        def windowStart = isTripPreCheckIncluded ? tripPreCheckTime : toDateTime(settings["trip${tripId}EarliestDepartureTime"])
+        def windowEnd = toDateTime(settings["trip${tripId}LatestDepartureTime"])
+        logDebug("Checking if in departure window which starts at ${windowStart} and ends at ${windowEnd} for trip ${tripId}")
+        if(!timeOfDayIsBetween(windowStart, windowEnd, new Date(), location.timeZone)) {
+            logDebug("Time Check Failed.")
             inWindow = false
         }
+        else logDebug("Time Check Passed.")
     }    
     return inWindow
+}
+
+Date getPreCheckTime(String tripId) {
+    return adjustTimeBySecs(settings["trip${tripId}EarliestDepartureTime"], getTripPreCheckMinsSetting()*60*-1)
 }
                 
                 
 def isTripDay(String tripId) {
+    def isTripDay = false
     def dateFormat = new SimpleDateFormat("EEEE")
     def dayOfTheWeek = dateFormat.format(new Date())
-    if (!settings["trip${tripId}Days"]) return true // if no trip days specified, assume trip day
+    logDebug("Trip days for tripId ${tripId} are ${settings["trip${tripId}Days"]}.")
+    if (settings["trip${tripId}Days"] == null) {
+        logDebug("No trip days specified.")
+        isTripDay = true // if no trip days specified, assume trip day
+    }
 	if (settings["trip${tripId}Days"].contains(dayOfTheWeek)) {
-	    return true
+        logDebug("Trip days include ${dayOfTheWeek}.")
+	    isTripDay = true
 	}    
-    else return false
+    logDebug("isTripDay is ${isTripDay}")
+    return isTripDay
 }
     
     
@@ -1201,10 +1668,10 @@ boolean atDestinationOfCurrentTrip(personId) {
 
 def handleVehicleChange(String personId) {
     // first update state based on impact of change to trip status
-    
+    logDebug("Handling Vehicle Change for person ${personId}")
     // did vehicle change start a trip?
     state.trips.each { tripId, trip ->
-         if (inTripVehicle(personId, tripId) && areDepartureConditionsMet(tripId) && !isTripInProgress(personId, tripId)) {
+         if (inTripVehicle(personId, tripId) && areDepartureConditionsMet(tripId) && !isPersonOnTrip(personId, tripId)) {
              // assume trip just started because (i) got in a vehicle specified for the trip (ii) while departure conditions met; (iii) and trip was not already in progress
              startTripForPerson(personId, tripId)             
          }
@@ -1221,33 +1688,6 @@ def handleVehicleChange(String personId) {
     updateTracker(personId)
 }
 
-def startTripPreDepartureForPerson(String personId, String tripId) {
-    logDebug("Starting pre-departure for trip ${tripId} for person ${personId}")
-    state.people[personId].current.trip.id = tripId
-    state.people[personId].current.trip.isPreDeparture = true    
-    state.people[personId]?.current.trip.departureTime = null
-}
-
-def startTripForPerson(String personId, String tripId) {
-    logDebug("Starting trip ${tripId} for person ${personId}")
-    state.people[personId]?.current.trip.id = tripId
-    state.people[personId]?.current.trip.isPreDeparture = false
-    state.people[personId]?.current.trip.departureTime = new Date().getTime()   
-    
-    performDepartureActionsForTrip(personId, tripId)
-}
-
-def endCurrentTripForPerson(String personId) {
-    logDebug("Ending trip ${state.people[personId]?.current.trip.id} for person ${personId}")
-    performArrivalActionsForTrip(personId, state.people[personId]?.current.trip.id) 
-    
-    state.people[personId]?.previous.trip.id = state.people[personId]?.current.trip.id
-    state.people[personId]?.previous.trip.departureTime = state.people[personId]?.current.trip.departureTime
-    state.people[personId]?.previous.trip.arrivalTime = new Date().getTime()            
-    state.people[personId]?.current.trip.id = null
-    state.people[personId]?.current.trip.isPreDeparture = null
-    state.people[personId]?.current.trip.departureTime = null        
-}
 
 Boolean mostPreferredArrivalTriggersConfigured(String  personId, String tripId) {
     def isConfigured = false
@@ -1282,7 +1722,7 @@ def handleDrivingChange(String personId) {        // isDriving is only set by li
     // did driving change start a trip?
     if (isDriving(personId)) {  // person just started driving
         state.trips.each { tripId, trip ->
-             if (isPersonOnTrip(personId) && areDepartureConditionsMet(tripId) && !isTripInProgress(personId, tripId)) {
+             if (isPersonOnTrip(personId) && areDepartureConditionsMet(tripId) && !isPersonOnTrip(personId, tripId)) {
                  // assume trip just started because (i) person scheduled for the trip just started driving (ii) while departure conditions met; (iii) and trip was not already in progress
                  startTripForPerson(personId, tripId)             
              }
@@ -1350,7 +1790,7 @@ def setPersonPlace(String personId) {
         if (state.people[personId].places[lastChanged]?.presence.equals("present")) {
             // case (i)
             logDebug("Presence at that place is the last presence event to occur")
-            if (lastChanged != placesPresent[0]) log.warn "Mismatch from places presence sensor logic. Debug."
+            if (lastChanged != placesPresent[0]) logDebug("Mismatch from places presence sensor logic. Needs debugging.")
             
             if (state.people[personId].life360?.address != getNameOfPlaceWithId(placesPresent[0]) && state.people[personId].life360?.address !=  getPlaceAddressById(placesPresent[0])) {
                 log.warn "Mismatch in presence for ${getNameOfPersonWithId(personId)}. Life360 indicates presence at ${state.people[personId].life360?.address} but presence sensor indicates he or she is present at ${getNameOfPlaceWithId(placesPresent[0])}"
@@ -1363,12 +1803,20 @@ def setPersonPlace(String personId) {
         }
         else if (state.people[personId].places[lastChanged]?.presence.equals("not present")) {
             // case (ii)    
-            // TO DO
+            log.warn "Check to see if presence sensor for placeId ${placesPresent[0]} is stuck."
+            if (didChangePlaceById(personId, placesPresent[0])) {
+                logDebug("Place of presence has changed, so updating current place in person's state to placeId ${placesPresent[0]}")
+                changePersonPlaceById(personId, placesPresent[0])
+             }
         }
     }
     else {
         // present at multiple places. Must resolve conflict between multiple presence sensors in the present state
-        // TO DO
+            log.warn "Present at multiple places, including placeIds ${placesPresent}. Setting presence to the last place where presence changed to present."
+            if (didChangePlaceById(personId, lastChanged)) {
+                logDebug("Place of presence has changed, so updating current place in person's state to placeId ${lastChanged}")
+                changePersonPlaceById(personId, lastChanged)
+             }
     }
 }
 
@@ -1403,7 +1851,7 @@ def didChangePlaceById(String personId, String placeId) {
     // check if place presence actually changed
     if (state.people[personId]?.current.place.id && state.people[personId]?.current.place.id == placeId) {
         // location hasn't changed
-        if (logEnable) "didChangePlaceById returning false"
+        logDebug("didChangePlaceById returning false")
         return false
     }    
     return true
@@ -1417,7 +1865,6 @@ def changePersonPlaceByName(String personId, String placeName) {
     state.people[personId]?.previous.place.name = state.people[personId]?.current.place.name
     state.people[personId]?.previous.place.arrival = state.people[personId]?.current.place.arrival
     
-    // TO DO: check if better way to set arrival and departure time, e.g., to be the exact same as set in places or life360 state variables
     state.people[personId]?.previous.place.departure = new Date().getTime()
     
     if (placeIdByName) {
@@ -1459,7 +1906,7 @@ def setPersonVehicle(String personId) {
         vehiclesList.add(vehicleId)
         logDebug("Presence Info for person ${personId} at vehicleId ${vehicleId} is ${presenceInfo.presence}.")
         if (presenceInfo.presence.equals("present")) {
-            logDebug("Adding vehicleId ${vehiclesId} to vehiclesPresent")
+            logDebug("Adding vehicleId ${vehicleId} to vehiclesPresent")
             vehiclesPresent.add(vehicleId)
         }
         if (lastChanged == null || state.people[personId].vehicles[lastChanged].atTime == null) lastChanged = vehicleId
@@ -1494,12 +1941,21 @@ def setPersonVehicle(String personId) {
             }
         }
         else if (state.people[personId].vehicles[lastChanged]?.presence.equals("not present")) {
-            // case (ii)    
+            // case (ii) 
+            log.warn "Check to see if presence sensor for vehicleId ${vehiclesPresent[0]} is stuck."
+            if (didChangeVehicle(personId, vehiclesPresent[0])) {
+                logDebug("Vehicle of presence has changed, so updating current vehicle in person's state to vehicleId ${vehiclesPresent[0]}")
+                changePersonVehicle(personId, vehiclesPresent[0])
+            }
         }
     }
     else {
         // present at multiple vehicles. Must resolve conflict between multiple presence sensors in the present state
-        
+        log.warn "Present at multiple vehicles, including vehicleIds ${vehiclesPresent}. Setting presence to the last vehicle where presence changed to present."
+        if (didChangeVehicle(personId, lastChanged)) {
+                logDebug("Vehicle of presence has changed, so updating current vehicle in person's state to vehicleId ${lastChanged}")
+                changePersonVehicle(personId, lastChanged)
+            }
     }    
 }
 
@@ -1507,11 +1963,11 @@ def didChangeVehicle(String personId, String vehicleId) {
     // check if vehicle presence actually changed
     if (state.people[personId]?.current.vehicle.id && state.people[personId]?.current.vehicle.id == vehicleId) {
         // location hasn't changed
-        if (logEnable) "Vehicle ID has not changed. Returning false from didChangeVehicle"
+        logDebug("Vehicle ID has not changed. Returning false from didChangeVehicle")
         return false
     }
     else if (state.people[personId]?.current.vehicle.id == null && vehicleId == null) {
-        if (logEnable) "Still not present at any vehicle. Returning false from didChangeVehicle"
+        logDebug("Still not present at any vehicle. Returning false from didChangeVehicle")
         return false
     }
     else return true
@@ -1569,7 +2025,7 @@ def vehiclePresenceSensorHandler(evt) {
 }
                     
 def isPlaceDeviceForPerson(personId, placeId, device) {
-    if (logEnable) log.debug "In isPlaceDeviceForPerson with sensor for person: ${settings["place${placeId}Person${personId}Sensor"]} and device: ${device}"
+    logDebug("In isPlaceDeviceForPerson with sensor for person: ${settings["place${placeId}Person${personId}Sensor"]} and device: ${device}")
      if (settings["place${placeId}Person${personId}Sensor"] && settings["place${placeId}Person${personId}Sensor"].getDeviceNetworkId() == device.getDeviceNetworkId()) {
          log.debug "returning true from isPlaceDeviceForPerson"
          return true
@@ -1578,7 +2034,7 @@ def isPlaceDeviceForPerson(personId, placeId, device) {
 }
 
 def placePresenceSensorHandler(evt) {
-    if (logEnable) log.debug "In place presence sensor handler for event: ${evt.value} with device ${evt.getDevice()}"
+    logDebug("In place presence sensor handler for event: ${evt.value} with device ${evt.getDevice()}")
     for (placeId in state.places) {
         state.people?.each { personId, person ->
             if (isPlaceDeviceForPerson(personId, placeId, evt.getDevice())) {
@@ -1611,21 +2067,11 @@ def TripsPage() {
                 }
                 tripsDisplay += "</table>"
                 paragraph tripsDisplay
-                paragraph getInterface("line", "")
             }
 
             if (state.addingTrip) {
-                input name: "trip${state.lastTripID}Origin", type: "enum", title: "Origin of Trip", required: true, submitOnChange: true, options: getPlacesEnumList()
-                input name: "trip${state.lastTripID}Destination", type: "enum", title: "Destination of Trip", required: true, submitOnChange: true, options: getPlacesEnumList()    
-    
-                input name: "trip${state.lastTripID}People", type: "enum", title: "Traveler(s)", required: true, submitOnChange: true, options: getPeopleEnumList(), multiple: true 
-                input name: "trip${state.lastTripID}Vehicles", type: "enum", title: "Vehicle(s)", required: true, submitOnChange: true, options: getVehiclesEnumList(), multiple: true 
-                input name: "trip${state.lastTripID}Days", type: "enum", title: "Day(s) of Week", required: true, multiple:true, options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]  
-                input name: "trip${state.lastTripID}EarliestDepartureTime", type: "time", title: "Earliest Departure Time", required: false, width: 4, submitOnChange: true
-    
-                input name: "trip${state.lastTripID}LatestDepartureTime", type: "time", title: "Latest Departure Time", required: false, width: 4
-                input name: "trip${state.lastTripID}TargetArrivalTime", type: "time", title: "Target Arrival", required: false, width: 4
                 
+                tripInput(state.lastTripID.toString())
                 input name: "submitNewTrip", type: "button", title: "Submit", width: 3
                 input name: "cancelAddTrip", type: "button", title: "Cancel", width: 3
             }
@@ -1637,29 +2083,20 @@ def TripsPage() {
             else if (state.editingTrip) {
                 input name: "tripToEdit", type: "enum", title: "Edit Trip:", options: getTripEnumList(), multiple: false, submitOnChange: true
                 if (tripToEdit) {
-                    def id = getIdOfTripWithName(tripToEdit)
-                    if (id != null) {
-                        state.editedTripId = id    // save the ID and name of the vehicle being edited in state
+                    def tripId = getIdOfTripWithName(tripToEdit)
+                    if (tripId != null) {
+                        state.editedTripId = tripId    // save the ID and name of the vehicle being edited in state
                         state.editedTripName = tripToEdit
                     }
                     else {
                         // just edited the trip's origin or destination so that tripToEdit no longer holds the same trip name. Need to update that.
-                        id = state.editedTripId
-                        def newTripName = getNameOfTripWithId(id)
+                        tripId = state.editedTripId
+                        def newTripName = getNameOfTripWithId(tripId)
                         app.updateSetting("tripToEdit",[type:"enum",value:newTripName]) 
                         state.editedTripName = newTripName
                     }
-                    
-                    input name: "trip${id}Origin", type: "enum", title: "Origin of Trip", required: true, submitOnChange: true, options: getPlacesEnumList()
-                    input name: "trip${id}Destination", type: "enum", title: "Destination of Trip", required: true, submitOnChange: true, options: getPlacesEnumList()    
-    
-                    input name: "trip${id}People", type: "enum", title: "Traveler(s)", required: true, submitOnChange: true, options: getPeopleEnumList(), multiple: true 
-                    input name: "trip${id}Vehicles", type: "enum", title: "Vehicle(s)", required: true, submitOnChange: true, options: getVehiclesEnumList(), multiple: true 
-                    input name: "trip${id}Days", type: "enum", title: "Day(s) of Week", required: true, multiple:true, options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]  
-                    input name: "trip${id}EarliestDepartureTime", type: "time", title: "Earliest Departure Time", required: false, width: 4, submitOnChange: true
-    
-                    input name: "trip${id}LatestDepartureTime", type: "time", title: "Latest Departure Time", required: false, width: 4
-                    input name: "trip${id}TargetArrivalTime", type: "time", title: "Target Arrival", required: false, width: 4                    
+                    tripInput(tripId)
+                                 
                 }
                 input name: "submitEditTrip", type: "button", title: "Submit", width: 3
                // input name: "cancelEditTrip", type: "button", title: "Cancel", width: 3
@@ -1673,17 +2110,66 @@ def TripsPage() {
             } 
 
         }
-       
-        section 
-        {
-            
-            href(name: "PreferredRoutePage", title: "Configure Preferred Route", required: false, page: "PreferredRoutePage")
-            href(name: "ActionConfigPage", title: "Configure What To Do With Travel Information", required: false, page: "ActionConfigPage")
-            paragraph getInterface("line", "")
 
-
-        }
     }
+}
+
+def tripInput(String tripId) {
+    paragraph getInterface("subHeader", " Configure Trip Logistics")
+                input name: "trip${tripId}Origin", type: "enum", title: "Origin of Trip", required: true, submitOnChange: true, options: getPlacesEnumList()
+                input name: "trip${tripId}Destination", type: "enum", title: "Destination of Trip", required: true, submitOnChange: true, options: getPlacesEnumList()    
+    
+                input name: "trip${tripId}People", type: "enum", title: "Traveler(s)", required: true, submitOnChange: true, options: getPeopleEnumList(), multiple: true 
+                input name: "trip${tripId}Vehicles", type: "enum", title: "Vehicle(s)", required: true, submitOnChange: true, options: getVehiclesEnumList(), multiple: true 
+                input name: "trip${tripId}Days", type: "enum", title: "Day(s) of Week", required: true, multiple:true, options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]  
+                input name: "trip${tripId}EarliestDepartureTime", type: "time", title: "Earliest Departure Time", required: false, width: 4, submitOnChange: true
+    
+                input name: "trip${tripId}LatestDepartureTime", type: "time", title: "Latest Departure Time", required: false, width: 4
+                input name: "trip${tripId}TargetArrivalTime", type: "time", title: "Target Arrival", required: false, width: 4
+                
+                if (settings["trip${tripId}Origin"] && settings["trip${tripId}Destination"]) {
+                    def routeOptions = getRouteOptions(tripId)
+                    if (routeOptions != null) {
+                        def optionEnum = []
+                        routeOptions.each { index, option ->
+                            optionEnum.add(option.route)
+                         }
+                        paragraph getInterface("subHeader", " Configure Preferred Route Biasing")
+                         paragraph "Select a preferred route in order to bias route recommendations in favor of your preferred route."
+                         input name: "trip${tripId}PreferredRoute", type: "enum", title: "Preferred Route", required: false, options: optionEnum, submitOnChange: true
+                     if (settings["trip${tripId}PreferredRoute"]) {      
+                         def routeOption = null
+                         routeOptions.each { index, option ->
+                             if (option.route.contains(settings["trip${tripId}PreferredRoute"])) routeOption = option
+                         }
+                         paragraph routeOption.steps
+                    }
+                    input name: "trip${tripId}PreferredRouteBias", type: "number", title: "Preferred Route Bias (mins)", required: false, width: 4
+                    paragraph "Preferred Route Bias is how many minutes faster an alternate route must be in order to be recommended over your preferred route."
+                    
+                    }
+                    else {
+                        log.error "Error: Unable to Retrieve Route Options."
+                        paragraph getInterface("error", "Error: Unable to Retrieve Route Options. Please check your Internet connection.")
+                    }
+                }
+
+                paragraph getInterface("subHeader", " Configure Departure Automations")
+               input name: "trip${tripId}DeparturePushDevices", type: "capability.notification", title: "Send Push Notification with recommended route to these devices upon departure", required: false, multiple: true, submitOnChange: true  
+               input name: "trip${tripId}OnlyPushIfNonPreferred", type: "bool", title: "But Only if Non-Preferred Route Recommended?", required: false, submitOnChange: false 
+                
+                input name: "trip${tripId}DepartureSwitches", type: "capability.switch", title: "Upon departure, turn these Switches", required: false, multiple: true, submitOnChange: true, width: 4  
+                input name: "trip${tripId}DepartureSwitchesOnorOff", type: "enum", title: "", options: ["on", "off"], required: false, multiple: false, submitOnChange: true, width: 3
+
+                paragraph getInterface("subHeader", " Configure Arrival Automations")
+                input name: "trip${tripId}ArrivalPushDevices", type: "capability.notification", title: "Send Push Notification about arrival to these devices", required: false, multiple: true, submitOnChange: true
+                input name: "trip${tripId}ArrivalSwitches", type: "capability.switch", title: "Upon arrival, turn these switches", required: false, multiple: true, submitOnChange: true   
+                input name: "trip${tripId}ArrivalSwitchesOnorOff", type: "enum", title: "", options: ["on", "off"], required: false, multiple: false, submitOnChange: true  
+                
+                paragraph getInterface("subHeader", " Configure Late Arrival Automations")
+                
+                input name: "trip${tripId}PushDevicesIfLate", type: "capability.notification", title: "Send Push Notification to these devices if going to be at least X minutes later than target arrival time", required: false, multiple: true, submitOnChange: true 
+                input name: "trip${tripId}LateNotificationMins", type: "number", title: "Number of minutes late that triggers notification", required: false, submitOnChange: false     
 }
 
 def clearTripSettings(String tripId) {
@@ -1721,12 +2207,30 @@ def getIdOfTripWithName(name) {
 
 def addTrip(String id) {
     if (!state.trips) state.trips = [:]
-    def tripMap = [routes: null, options: null]
+    def tripMap = [routes: null, areRoutesBiased: null, routesAsOf: null, averageTrafficDelay: null, numSamplesForAverage: null]
     state.trips[id] = tripMap
 }
 
 def getNameOfTripWithId(String id) {
     return settings["trip${id}Origin"] + " to " + settings["trip${id}Destination"]
+}
+
+String getOrigin(String id) {
+    return settings["trip${id}Origin"]
+}
+
+String getDestination(String id) {
+    return settings["trip${id}Destination"]
+}
+
+
+String isPreferredRouteSet(String tripId) {
+    return (settings["trip${tripId}PreferredRoute"]) ? true : false
+}
+
+String getDestinationIcon(String tripId) {
+    def destinationName = getDestination(tripId)
+    return getPlaceIcon(destinationName)   
 }
 
 def deleteTrip(nameToDelete) {
@@ -1737,61 +2241,15 @@ def deleteTrip(nameToDelete) {
     }
 }
 
-def PreferredRoutePage() {
-    dynamicPage(name: "PreferredRoutePage") {      
-        section("") {      
-            paragraph getInterface("header", " Configure Preferred Route")
-            def routeOptions = getRouteOptions()
-            if (getRouteOptions() != null) {
-                input name: "preferredRoute", type: "enum", title: "Preferred Route", required: false, options: getRouteOptions(), submitOnChange: true
-                 paragraph "You can optionally bias route recommendations in favor of your preferred route. Preferred Route Bias is how many minutes faster an alternate route must be in order to be recommended over your preferred route."
-                input name: "preferredRouteBias", type: "number", title: "Preferred Route Bias (mins)", required: false, width: 4
-                if (preferredRoute) {          
-                    def routeSteps = getPreferredRouteSteps()
-                    if (routeSteps) {
-                        paragraph getInterface("header", " Preferred Route Steps")
-                        for (step in routeSteps) {
-                            paragraph "${step.html_instructions}"
-                        }
-                    }
-                }
-            }
-            else {
-                log.error "Error: Unable to Retrieve Route Options."
-                paragraph getInterface("error", "Error: Unable to Retrieve Route Options. Please check your Internet connection.")
-            }
-
-        }
-    }
+def getFetchIntervalSetting() {
+    return (fetchInterval) ? fetchInterval : fetchIntervalDefault
 }
 
-def ActionConfigPage() {
-    dynamicPage(name: "ActionConfigPage") {
-        section 
-        {
-            paragraph getInterface("header", " Configure What To Do With Fetched Travel Information")
-            actionInput()
-        }    
-    }
+def getTripPreCheckMinsSetting() {
+    return (tripPreCheckMins) ? tripPreCheckMins : tripPreCheckMinsDefault
 }
 
-def actionInput() {
-  //  paragraph getInterface("subheader", "Push Notification")
-    paragraph "Send a push notification to select notification devices indicating recommended route."
-     input name: "isPushNotification", type: "bool", title: "Send Push Notification?", required: false, submitOnChange: true
-    if (isPushNotification) {
-         input name: "pushDevice", type: "capability.notification", title: "Push Notification Device(s)", required: false, multiple: true, submitOnChange: true    
-         input name: "onlyPushIfNonPreferred", type: "bool", title: getInterface("subField", "But Only if Non-Preferred Route Recommended?"), required: false, submitOnChange: false
-        paragraph getInterface("note", "Smart Travel avoids sending duplicate push notifications, so that push notifications only convey changed travel information.")
-    }
-    paragraph getInterface("line", "")
-}
-
-def getEarlyFetchMinsSetting() {
-    return (earlyFetchMins) ? earlyFetchMins : earlyFetchMinsDefault
-}
-
-def getPostArrivalDisplayMinsSettings() {
+def getPostArrivalDisplayMinsSetting() {
     return (postArrivalDisplayMins) ? postArrivalDisplayMins : postArrivalDisplayMinsDefault
 }
 
@@ -1799,10 +2257,25 @@ def getCacheValidityDurationSetting() {
     return (cacheValidityDuration) ? cacheValidityDuration : cacheValidityDurationDefault
 }
 
-def getOptionsCacheValidityDurationSetting() {    
-     return (optionsCacheValidityDuration) ? optionsCacheValidityDuration : optionsCacheValidityDurationDefault 
+def getIsPreferredRouteDisplayedSetting() {
+    return (isPreferredRouteDisplayed) ? isPreferredRouteDisplayed : isPreferredRouteDisplayedDefault
 }
 
+def getCircleBackgroundColor() {
+    return (circleBackgroundColor) ? circleBackgroundColor : circleBackgroundColorDefault
+}
+
+Integer getTileScaleSetting() {
+    return (tileScale) ? tileScale : tileScaleDefault
+}
+                   
+Integer gettrafficDelayThresholdSetting() {
+    return (trafficDelayThreshold) ? trafficDelayThreshold : trafficDelayThresholdDefault             
+}
+
+def getTimeFormatSetting() {
+    return (timeFormat) ? timeFormat : timeFormatDefault
+}
 def getApiKey() {
      return api_key   
 }
@@ -1817,28 +2290,32 @@ def instantiateToken() {
 def initializeTrackers() {
     if (state.people) {
         state.people.each { personId, person ->
-            def networkID = "MultiPlaceTracker${personId}"
+            def networkID = getTrackerId(personId)
             def child = getChildDevice(networkID)
             if (!child) createTracker(personId, settings["person${personId}Name"])
-            // TO DO: update tile
+            updateTracker(personId)
         }
     }
 }
 
+def getTrackerId(String personId) {
+    return "MultiPlaceTracker${personId}"
+}
+
 def createTracker(personId, personName)
 {
-    def networkID = "MultiPlaceTracker${personId}"
+    def networkID = getTrackerId(personId)
     def child = addChildDevice("lnjustin", "Multi-Place Tracker", networkID, [label:"${personName} Multi-Place Tracker", isComponent:true, name:"${personName} Multi-Place Tracker"])
 }
 
 def getTracker(personId) {
-    def networkID = "MultiPlaceTracker${personId}"
+    def networkID = getTrackerId(personId)
     return getChildDevice(networkID)
 }
 
 def deleteTracker(personId)
 {
-    def networkID = "MultiPlaceTracker${personId}"
+    def networkID = getTrackerId(personId)
     def child = getChildDevice(networkID)
     if (child) {
         deleteChildDevice(networkID)
@@ -1854,41 +2331,16 @@ def deleteAllTrackers() {
 }
 
 
-def getTileLocalUrl(tile) {
+def getTrackerLocalUrl(String personId) {
     instantiateToken()
-    return getFullLocalApiServerUrl() + "/smartTravel/${tile}?access_token=${state.accessToken}"
+    return getFullLocalApiServerUrl() + "/multiplace/${personId}?access_token=${state.accessToken}"
 }
 
 
-def getTileCloudUrl(tile) {
+def getTrackerCloudUrl(String personId) {
     instantiateToken()
-    getFullApiServerUrl() + "/smartTravel/${tile}?access_token=${state.accessToken}"
+    getFullApiServerUrl() + "/multiplace/${personId}?access_token=${state.accessToken}"
 }
-
-def updateTile(tile, routes, instance) {
-    // Update Tile Device
-    def networkID = "SmartTravelTile${tile}"
-    def child = getChildDevice(networkID)
-    if (child) {
-        child.configureInstance(instance)
-        child.configureRoutes(routes)
-    }
-}
-
-def buildTile() {
-    def tile = params.tile
-    def networkID = "SmartTravelTile${tile}"
-    def child = getChildDevice(networkID)
-    def svg = null
-    if (child) {
-        svg = child.getTile()
-    }
-    else {
-        log.warn "No Smart Travel Device Found for tile ${tile}. No tile built."
-    }
-    render contentType: "image/svg+xml", data: svg, status: 200
-}
-
 
 def getInterface(type, txt="") {
     switch(type) {
@@ -1906,7 +2358,19 @@ def getInterface(type, txt="") {
             break
         case "subField":
             return "<div style='color:#000000;background-color:#ededed;'>${txt}</div>"
-            break        
+            break     
+        case "subHeader": 
+            return "<div style='color:#000000;font-weight: bold;background-color:#ededed;border: 1px solid;box-shadow: 2px 3px #A9A9A9'>${txt}</div>"
+            break
+        case "subSection1Start": 
+            return "<div style='color:#000000;background-color:#d4d4d4;border: 0px solid'>"
+            break
+        case "subSection2Start": 
+            return "<div style='color:#000000;background-color:#e0e0e0;border: 0px solid'>"
+            break
+        case "subSectionEnd":
+            return "</div>"
+            break
     }
 } 
 
@@ -1940,121 +2404,68 @@ def getGoogleMapsApiUrl() {
     return "https://maps.googleapis.com/maps/api/"
 }
 
-def handleStartFetchEvent() {
-    if (logEnable) log.trace "Handling start fetch event"
-    if (isStartFetchAllowed()) {
-        if (logEnable) log.trace "Fetch Allowed. Fetching..."
-        if (fetchFrequency == periodicFreq) {
-            initializeStateForFetchPeriod()
-            state.inFetchingPeriod = true
-            periodicFetch()
-        }
-        else fetch()
+Boolean areRoutesToBeBiased(tripId) {
+    if (settings["trip${tripId}PreferredRoute"] && settings["trip${tripId}PreferredRouteBias"]) {
+        return true
     }
+    else return false
 }
 
-def periodicFetch() {
-    if (state.inFetchingPeriod) {
-        fetch()
-        runIn(fetchInterval*60, "periodicFetch")
-    }
-    else {
-        if (logEnable) log.debug "Fetching Period Ended. No more fetching for now."   
-    }
-}
-
-def handleStopFetchEvent() {
-    if (isStopFetchAllowed()) {
-        state.inFetchingPeriod = false
-    }
-}
-
-def fetch() {
-    if (logEnable) log.trace "Fetching Now."
-    def response = getDirections()
-    if (response) {
-        state.routes = [:]
-        def routes = response.routes
-        if (preferredRoute && preferredRouteBias) routes = biasRoutes(routes)
-        for (i=0; i<routes.size(); i++) {
-            def route = routes[i]
-            def summary = route.summary
-            def preferred = (isPreferredRoute(summary)) ? true : false
-            def duration = route.legs[0].duration_in_traffic?.value
-            def durationStr = route.legs[0].duration_in_traffic?.text
-            def distance = route.legs[0].distance.text
-            def eta = getETA(duration)
-            def requiredDeparture = getRequiredDeparture(duration)
-            def departureCountDown = ""
-            def departureCountDownStr = ""
-            if (requiredDeparture) {
-                departureCountDown = getSecondsBetween(new Date(), requiredDeparture)
-                departureCountDownStr = formatTime(departureCountDown)
+def getTripWithRoutes(String tripId, Boolean doForceUpdate=false) {
+    logDebug("Getting Routes.")
+    if (!isCacheValid(tripId) || doForceUpdate) { // if cache is valid, that means state.trips[tripId].routes already holds valid routes data. If the cache is invalid, or if an update is forced,  fetch and populate state.trips[tripId].routes with new routes data
+        logDebug("Either Cached routes are invalid, or forcing update. Fetching routes from Google.")
+        def response = fetchRoutes(tripId)
+        if (response) {
+           state.trips[tripId].routes = [:]
+            def routes = response.routes
+            if (areRoutesToBeBiased(tripId)) {
+                routes = biasRoutes(tripId, routes)
+                state.trips[tripId].areRoutesBiased = true
             }
-            def lastUpdated = new Date()
-            state.routes[i] = [summary: summary, duration: duration, durationStr: durationStr, eta: eta, departure: departure, preferred: preferred, departureCountDown: departureCountDown, departureCountDownStr: departureCountDownStr, lastUpdated: lastUpdated]
+            else {
+                state.trips[tripId].areRoutesBiased = false
+            }
+            for (Integer i=0; i<routes.size(); i++) {
+                def route = routes[i]
+                def summary = route.summary
+                def duration = route.legs[0].duration_in_traffic?.value
+                def trafficDelay = (route.legs[0].duration_in_traffic?.value - route.legs[0].duration?.value)
+                def distance = route.legs[0].distance.text
+                state.trips[tripId].routes[i] = [summary: summary, duration: duration, trafficDelay: trafficDelay, distance: distance]
+            }
+            state.trips[tripId].routesAsOf = new Date().getTime()
+            def bestRouteTrafficDelay = state.trips[tripId].routes[0].trafficDelay
+            if (!state.trips[tripId].averageTrafficDelay) {
+                state.trips[tripId].averageTrafficDelay = bestRouteTrafficDelay
+                state.trips[tripId].numSamplesForAverage = 1
+            }
+            else {
+                def oldAverage = state.trips[tripId].averageTrafficDelay
+                def newSampleNum = state.trips[tripId].numSamplesForAverage + 1
+                state.trips[tripId].averageTrafficDelay = oldAverage + ((bestRouteTrafficDelay - oldAverage) / newSampleNum)
+                state.trips[tripId].numSamplesForAverage = newSampleNum
+            }
         }
-        act()
+        else {
+            log.warn "No response from Google Traffic API. Check connection."
+        }
     }
-    else {
-        log.warn "No response from Google Traffic API. Check connection."
-    }
+    // now have state.trips[tripId] populated with routes, if wasn't already or if was stale
+    return state.trips[tripId]
 }
 
 // ### ACT METHODS ###
 def act() {
-    if (isPushNotification) sendPush()
-    if (isDashboardTile) parent.updateTile(tile, state.routes, app.name)    
+    if (isPushNotification) sendPush()   
 }
 
-def sendPush() {
-    if (pushDevice && isPushAllowed()) {
-        def routes = state.routes
-              
-        def bestRoute = routes[0].summary
-        def bestRouteDuration = routes[0].duration
-        def requiredDeparture = routes[0].departure
-        def eta = routes[0].eta
-        
-        def nextBestRoute = routes[1].summary
-        def nextBestRouteDuration = routes[1].duration
-        def fasterBy = (nextBestRouteDuration - bestRouteDuration)/60
-
-        pushDevice.deviceNotification("Take ${bestRoute}. ${eta} ETA. ${fasterBy} mins faster than ${nextBestRoute}.")
-        state.lastPushedRoute = bestRoute
-    }
-    else {
-        if (logEnable) log.info "Push Notification Restricted. Nothing Sent."
-    }
-}
-
-def isPushAllowed() {
-    def isAllowed = true
-    
-    def routes = state.routes
-    def bestRoute = routes[0].summary   
-    
-    if (onlyPushIfNonPreferred) {
-        if (preferredRoute && isPreferredRoute(bestRoute)) {
-            isAllowed = false
-            log.info "Preferred Route Best. No Push Notification Sent."      
-        }                
-    }
-    
-    if (state.lastPushedRoute == bestRoute) {
-        // Only check for push notifications that would duplicate the recommended route, as ETA may change slightly
-        isAllowed = false
-        log.info "Push Notification recommending ${bestRoute} already sent. Duplicate Push Notification Not Sent."
-    }
-    
-    return isAllowed
-}
 
 
 // ###  Route Info Methods  ###
-def getRequiredDeparture(duration) {
-    if (targetArrivalTime) {
-        def target = toDateTime(targetArrivalTime)
+def getRequiredDeparture(String tripId, duration) {
+    if (settings["Trip${tripId}TargetArrivalTime"]) {
+        def target = toDateTime(settings["Trip${tripId}TargetArrivalTime"])
         Calendar cal = Calendar.getInstance()
         cal.setTimeZone(location.timeZone)
         cal.set(Calendar.SECOND,(cal.get(Calendar.SECOND)-duration));
@@ -2072,15 +2483,22 @@ def getETA(duration) {
     return arrival.toString()
 }
 
-def biasRoutes(unbiasedRoutes) {
+
+def getETADate(duration) {
+    Calendar cal = Calendar.getInstance()
+    cal.setTimeZone(location.timeZone)
+    cal.add(Calendar.SECOND, duration)
+    return cal.getTime()
+}
+
+def biasRoutes(String tripId, unbiasedRoutes) {
     def preferredRouteIndex = -1
     def routeMap = [:]
     def biasedRoutes = [:]
-    for (i=0; i<unbiasedRoutes.size(); i++) {
+    for (Integer i=0; i<unbiasedRoutes.size(); i++) {
          def route = unbiasedRoutes[i]
          def summary = route.summary
-        if (logEnable) log.debug "Route ${i} is ${summary}"
-        if (isPreferredRoute(summary)) preferredRouteIndex = i
+        if (isPreferredRoute(tripId, summary)) preferredRouteIndex = i
         routeMap[i] = route.legs[0].duration_in_traffic?.value
     }
     if (preferredRouteIndex <= 0) {
@@ -2089,11 +2507,11 @@ def biasRoutes(unbiasedRoutes) {
     }
     else if (preferredRouteIndex > 0) {
     // If preferred route is listed but is not the best route, bias ordering according to bias
-        if (logEnable) log.debug "Unbiased routes: ${routeMap}"
-        routeMap[preferredRouteIndex] -= (preferredRouteBias*60)    // bias preferred route duration for ranking
+        logDebug("Unbiased routes: ${routeMap}")
+        routeMap[preferredRouteIndex] -= (settings["trip${tripId}PreferredRouteBias"]*60)    // bias preferred route duration for ranking
         routeMap = routeMap.sort {it.value}                        // rank routes after biasing
-        if (logEnable) log.debug "Biased route map: ${routeMap}"
-        def rank = 0
+        logDebug("Biased route map: ${routeMap}")
+        Integer rank = 0
         routeMap.each { i, j ->
             biasedRoutes[rank] = unbiasedRoutes[i]                // reorder routes according to new rank
             rank++
@@ -2102,65 +2520,47 @@ def biasRoutes(unbiasedRoutes) {
     }
 }
 
-def isPreferredRoute(route) {
-    if (preferredRoute && route.contains(preferredRoute)) return true
+def isPreferredRoute(String tripId, route) {
+    // TO DO: any better way to check for preferred route?
+    if (settings["trip${tripId}PreferredRoute"] && route.contains(settings["trip${tripId}PreferredRoute"])) return true
     else return false
 }
 
-def getPreferredRouteSteps() {
-    if (preferredRoute && state.optionsCache) {
-        def routeOption = state.optionsCache.routes.find { it.summary.contains(preferredRoute) }
-        return routeOption.legs[0].steps
-    }
-    return null
-}
-
-def getRouteOptions() {
-    def response = getDirectionOptions()
+def getRouteOptions(String tripId) {
+    def routeOptions = null
+    def response = fetchRouteOptions(tripId)
     if(response) {
+        routeOptions = [:]
         def routes = response.routes
-        def options = []
-        for (i=0; i<routes.size(); i++) {
-            options.add(routes[i].summary)
+        for (Integer i=0; i<routes.size(); i++) {
+            def steps = routes[i].legs[0].steps
+            def stepsText = ""
+            def j=1
+            for (step in steps) {
+                def text = step.html_instructions.replaceAll("(?s)<[^>]*>(\\s*<[^>]*>)*", "")
+                stepsText += j + "." + text + " "
+                j++
+            }
+            routeOptions[i] = [route: routes[i].summary, steps: stepsText]
+            logDebug("Route option ${i} = ${routeOptions[i]}")
         }
-        return options
+
     }
-    return null
+    return routeOptions
 }
-
-
 
 // ### API Methods ###
 
-def getDirections() {
-    if (isCacheValid()) {
-        return state.cache
-    }
-    else {
-        def subUrl = "directions/json?origin=${parent.getPlaceAddress(origin)}&destination=${parent.getPlaceAddress(destination)}&key=${getApiKey()}&alternatives=true&mode=driving&departure_time=now"   
-        def response = httpGetExec(subUrl)
-        if (response) {
-            state.cache = response
-            state.cacheTime = new Date()
-        }
-        return response
-    }
+def fetchRoutes(String tripId) {
+    def subUrl = "directions/json?origin=${getPlaceAddress(getOrigin(tripId))}&destination=${getPlaceAddress(getDestination(tripId))}&key=${getApiKey()}&alternatives=true&mode=driving&departure_time=now"   
+    def response = httpGetExec(subUrl)
+    return response
 }
 
-def getDirectionOptions() {
-    if (isOptionsCacheValid()) {
-        return state.optionsCache
-    }
-    else {
-        def subUrl = "directions/json?origin=${parent.getPlaceAddress(origin)}&destination=${parent.getPlaceAddress(destination)}&key=${getApiKey()}&alternatives=true&mode=driving"   // Don't need traffic info for route options, so exclude for lower billing rate
-        log.debug subUrl
-        def response = httpGetExec(subUrl)
-        if (response) {
-            state.optionsCache = response
-            state.optionsCacheTime = new Date()
-        }
-        return response
-    }
+def fetchRouteOptions(tripId) {
+    def subUrl = "directions/json?origin=${getPlaceAddress(getOrigin(tripId))}&destination=${getPlaceAddress(getDestination(tripId))}&key=${getApiKey()}&alternatives=true&mode=driving"   // Don't need traffic info for route options, so exclude for lower billing rate
+    def response = httpGetExec(subUrl)
+    return response
 }
 
 def httpGetExec(subUrl)
@@ -2186,41 +2586,46 @@ def httpGetExec(subUrl)
 }
 
 // ### Cache Methods ###
-def isCacheValid() {
-    if (state.cacheTime && (getSecondsBetween(toDateTime(state.cacheTime), new Date()) > getCacheValidityDuration())) {
-        return true
-    }
-    else return false
-}
-
-def getCacheValidityDuration() {
-    return parent.getCacheValidityDurationSetting() 
-}
-
-def getOptionsCacheValidityDuration() {
-    return parent.getOptionsCacheValidityDurationSetting()
-}
-
-def isOptionsCacheValid() {
-
-    if (state.optionsCacheTime) {
-        def optionsCacheDuration = getSecondsBetween(state.optionsCacheTime, new Date())
-        if (optionsCacheDuration <= getOptionsCacheValidityDuration()) {
-            return true
+def isCacheValid(String tripId) {
+    def isCacheValid = false
+    if (state.trips[tripId].routes && state.trips[tripId].routesAsOf && (getSecondsSince(state.trips[tripId].routesAsOf) <= getCacheValidityDurationSetting())) {
+        logDebug("Routes cache is within the validity time window.")
+        if (areRoutesToBeBiased(tripId) && state.trips[tripId].areRoutesBiased) {
+           isCacheValid = true
+            logDebug("Cached routes are biased, and routes are to be biased, so return cache valid")
         }
-        else {
-            return false      
+        else if (!areRoutesToBeBiased(tripId) && state.trips[tripId].areRoutesBiased == false) {
+            isCacheValid = true
+            logDebug("Cached routes are not biased, and routes are not to be biased, so return cache valid")
         }
     }
-    else {
-        return false    
-    }
+    return isCacheValid
 }
 
 // ### Utility Methods ###
-def getSecondsBetween(startDate, endDate) {
+def getSecondsBetween(Date startDate, Date endDate) {
     try {
         def difference = endDate.getTime() - startDate.getTime()
+        return Math.round(difference/1000)
+    } catch (ex) {
+        log.error "getSecondsBetween Exception: ${ex}"
+        return 1000
+    }
+}
+
+def getSecondsBetweenUTC(startDateUTC, endDateUTC) {
+    try {
+        def difference = endDateUTC - startDateUTC
+        return Math.round(difference/1000)
+    } catch (ex) {
+        log.error "getSecondsBetween Exception: ${ex}"
+        return 1000
+    }
+}
+
+def getSecondsSince(utcDate) {
+    try {
+        def difference = new Date().getTime() - utcDate
         return Math.round(difference/1000)
     } catch (ex) {
         log.error "getSecondsBetween Exception: ${ex}"
@@ -2233,5 +2638,18 @@ def formatTime(duration) {
     def mins = ((duration % 3600) / 60).intValue()
     def secs = (duration % 60).intValue()
     return (hours > 0) ? String.format("%02d:%02d:%02d", hours, mins, secs) : String.format("%02d:%02d", mins, secs)
+}
+
+
+def formatTimeMins(duration) {
+    def hours = (duration / 3600).intValue()
+    def mins = ((duration % 3600) / 60).intValue()
+    return String.format("%01d:%02d", hours, mins)
+}
+
+
+def extractTimeFromDate(Date date) {
+    if (getTimeFormatSetting() == "12 Hour") return date.format("h:mm a")
+    else if (getTimeFormatSetting() == "24 Hour") return date.format("H:mm")
 }
             
