@@ -8,6 +8,7 @@
     - after arrival, color of destinatoin indicates whether late (green vs. red)
     - send push notification or turn on/off switch if bad traffic (update tile with how many minutes in advance need to leave or countdown to departure)
     - Handle if never arrive at destination of trip? trip timeout?
+    - repository for icons, so people can push built icons for sharing
 
  */
 import groovy.json.*
