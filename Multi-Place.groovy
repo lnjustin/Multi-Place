@@ -1,84 +1,16 @@
 /*
 
-    - Multi-Place Presence Tracker with Travel Advisor
+    - Multi-Place Presence Tracker with Travel Advisor, Powered by Google Directions API
 
  * TO DO: 
-  - specify timeframes for "displaying" different routes/instances as the dashboard output. So, display home-to-work between 7-9am and work-to-home between 5-6pm. Maybe do this with a single child device that has an attribute describing the origin-destination pair at issue? Or one child device per vehicle (since same vehicle can't be headed to multiple destinations at the same time)?
-  - Specify name of person driving, as well as the presence sensor to detect whether in car
-
-
-  - tile is person specific. displays whereabouts of a person, as well as travel information associated with that person. Select what presence sensors indicate person's presence at various places. May or may not use Life 360 app
-
-  - if presence sensor for person specified, display "not left yet" on tile if hasn't left
-        
-   - tile per person (input for how many minutes before departure to display)
-        - avatar left
-        - when at certain place, display green place icon to right of avatar
-        - when taking a trip, display origin place icon --> car (in green) --> destination place icon, with either (a) best route or (b) estimated ETA or (c) both, either all the time or alternate. Or "not left" if haven't left
-
-
-    - At least once before departure window begins, and during departure window, (i) update tile with recommended route; (ii) check if need to leave before the departure window to arrive on time; (iii) send push notification or turn on/off switch if bad traffic (update tile with how many minutes in advance need to leave or countdown to departure); (v) send text if haven't left yet and going to miss the target arrival by X mins
+    - animate arrow between origin and destination of trip
+    - let color of arrow indicate how bad traffic is compared to usual (yellow, red, etc.)
+    - after arrival, color of destinatoin indicates whether late (green vs. red)
+    - if presence sensor for person specified, display "not left yet" on tile if hasn't left?
+    - send push notification or turn on/off switch if bad traffic (update tile with how many minutes in advance need to leave or countdown to departure)
 
     - tile options
         - display duration of presence?
-    - action options
-        - push notification or text if need to leave before departure window?
-        - push notification or text with recommended route upon predeparture or departure?
-            - only send if recommended route is not preferred route?
-        - turn on/off switch or push button upon departure?
-        - turn of/off switch or push button upon arrival?
-        - push notificaiton or text if going to miss target arrival by X mins?
-    
-
-    - fetch process
-        - if in predeparture window or departure window
-            - fetch (updates state.trips[tripId].routes with best routes)
-            - perform actions
-                - if only in predeparture window, check if need to leave before predeparture window
-                - if bad traffic, send push notification or turn on/off switch
-            - update tracker tile
-            - 
-
-    - betweeen predeparture window starting and departure window ending
-        - start displaying trip on tracker tile
-            - display origin, vehicle, destination
-            - display recommended route
-            - display whether or not have departed
-            - if departed, display ETA
-        - send push notification or turn on/off switch if bad traffic (update tile with how many minutes in advance need to leave or countdown to departure)
-        - send text if haven't left yet and going to miss target arrival by X mins
-    - predeparture sensors triggered (e.g., garage door opened) during departure window
-        - send notification with route recommendation
-        - but don't start trip yet (or should i let the user select an option re whether to start the trip when garage door opened?)
-    - actual departure
-        - send notification with route recommendation
-        - turn on/off switch or push button if enabled (to show departed)
-        - update tracker tile to show departed and to show ETA. Stop updating trip routes, so that the ETA will reflect the ETA from when the user actually departed
-        - continue checking if going to be late and send text if so
-    - departure window ends
-        - stop displaying trip on tracker tile if never departed
-    - arrival
-        - update tracker tile to show arrival
-        - turn on/off switch or push button upon arrival
-        - stop displaying trip on tracker tile after X mins of arrival
-
-    - When depart, (i) update tile with ETA; (ii) send push notification with recommended route if enabled; (iii) turn on/off switch or push button if enabled; (iv) send text to designated device if going to be late
-    - If life360 device, continue to update tile and send push notification as route or ETA changes
-    - When arrive, (i) update tile; (ii) turn on/off switch or push button if enabled
-
-    - Detect depart when haven't departed yet and either (a) vehicle sensor detects person in vehicle within the depature window (b) (or, if origin is home, when garage door opens within departure window), or (c) when presence sensor or life360 detects left origin place within the departure window
-    - Detect arrive when (a) presence sensor or door/switch detects arrive; or (b) life 360 detects at destination. If none of those triggers are set up, then detect arrive when no longer in car (but disadvantage that won't work if make a stop on the way). If also don't have a car sensor set up, then detect arrive when have departed and when time is estimated ETA
-
-Action Options
-    - option to send notification upon departure (or in advance of departure?)
-    - option to send text to designated device if going to be late (upon departure or in advance of departure or certain amount of time before target arrival?)
-    - option to turn on/off switch when depart or arrive
-
-    - option to display ETA to home if don't have trip set up?
-
-    - use Life360 isDriving field if no vehicle sensors set but life360 is set
-
-
 --> Have different options for format of tile. That way, people can share any modifications to it and easily incorporate into the app
     
 
@@ -86,12 +18,8 @@ Action Options
 
 
     TO DO:
-        - Handle delete vehicle settings when delete person, and vice versa
-        - Handle if leave before departure window?
         - Handle if never arrive at destination of trip? trip timeout?
 
-    THINKING PAD
-        - may show both place icon and vehicle icon if at both at the same time?
  */
 import groovy.json.*
 import java.text.SimpleDateFormat
@@ -118,9 +46,9 @@ definition(
 @Field Integer optionsCacheValidityDurationDefault = 900
 @Field String timeFormatDefault = "12 Hour"
 @Field Integer tileScaleDefault = 100
-@Field Boolean isPreferredRouteDisplayed = false
-@Field String circleBackgroundColor = "#808080"
-@Field Integer trafficDelayThreshold = 10
+@Field Boolean isPreferredRouteDisplayedDefault = false
+@Field String circleBackgroundColorDefault = "#808080"
+@Field Integer trafficDelayThresholdDefault = 10
 
 mappings
 {
@@ -156,9 +84,9 @@ def mainPage() {
                 }
                 else {
                     href(name: "TripsPage", title: "Manage Trips", description: getTripEnumList(), required: false, page: "TripsPage")
-                    href(name: "RestrictionsPage", title: "Manage Travel Advisor Restrictions", required: false, page: "RestrictionsPage")
-                    href(name: "TravelAPIPage", title: "Manage Travel API Access", required: false, page: "TravelAPIPage")
+                    href(name: "RestrictionsPage", title: "Manage Travel Advisor Restrictions", description: getRestrictedModesDescription(), required: false, page: "RestrictionsPage")
                     href(name: "TrackerPage", title: "Manage Tracker Settings", required: false, page: "TrackerPage")
+                    href(name: "TravelAPIPage", title: "Manage Travel API Access", required: false, page: "TravelAPIPage")
                     href(name: "AdvancedPage", title: "Manage Advanced Settings", required: false, page: "AdvancedPage")
                 }
 			}
@@ -181,12 +109,12 @@ def apiInput() {
 
 def PeoplePage() {
     dynamicPage(name: "PeoplePage") {
-        section {
+        section() {
             
             paragraph getInterface("header", " Manage People")
             if (state.people) {
                 def i = 0
-                def peopleDisplay = "<table border=0>"
+                def peopleDisplay = '<table width=100% border=0' + ((isDarkIconBackground) ? ' style="background-color:black; color:white;"' : '') + '>'
                 state.people.each { id, person ->
                     peopleDisplay += "" + ((i % 4 == 0) ? "<tr>" : "") + "<td align=center><img border=0 style='max-width:100px' src='${settings["person${id}Avatar"]}'><br><font style='font-size:20px;font-weight: bold'>${settings["person${id}Name"]}</font></td>" + ((i % 4 == 3) ? "</tr>" : "")
                     i++
@@ -239,7 +167,7 @@ def PeoplePage() {
                 if (state.people) input name: "deletePerson", type: "button", title: "Delete Person", width: 3
                 app.clearSetting("personToDelete")
             } 
-
+        input name: "isDarkIconBackground", type: "bool", title: "Show Dark Background For Images In App?", description:"Facilitates image visibility in the app if using light colored images.", submitOnChange: true
         }
     }
 }
@@ -351,9 +279,34 @@ def deletePerson(String nameToDelete) {
 }
 
 def clearPersonSettings(String personId) {
+    def personNameToDelete = getNameOfPersonWithId(personId)
+    
     app.clearSetting("person${personId}Name")
     app.clearSetting("person${personId}Avatar")
     app.updateSetting("person${personId}Life360",[type:"capability",value:[]]) 
+    
+    if (state.vehicles) {
+        for (vehicleId in state.vehicles) { 
+            app.updateSetting("vehicle${vehicleId}Person${personId}Sensor",[type:"capability",value:[]])
+        }
+    }
+    
+    if (state.places) {
+        for (placeId in state.places) {
+             app.updateSetting("place${placeId}Person${personId}Sensor",[type:"capability",value:[]])       
+        }
+    }
+    
+    if (state.trips) {
+        state.trips.each { tripId, trip ->
+            def newTripPeople = []
+            for (tripPerson in settings["trip${tripID}People"]) {
+                if (tripPerson != personNameToDelete) newTripPeople.add(tripPerson)
+            }
+            app.updateSetting("trip${tripID}People",[type:"enum",value:newTripPeople])
+        }
+    }
+    
 }
 
 void resetAddEditState() {
@@ -518,7 +471,7 @@ def VehiclesPage() {
             paragraph getInterface("header", " Manage Vehicles")
             if (state.vehicles) {  
                 def i = 0
-                def vehicleDisplay = "<table border=0>"
+                def vehicleDisplay = '<table width=100% border=0 style="float:right;' + ((isDarkIconBackground) ? 'background-color:black; color:white;"' : '"') + '>'
                 for (id in state.vehicles) {
                     vehicleDisplay += "" + ((i % 4 == 0) ? "<tr>" : "") + "<td align=center><img border=0 style='max-width:100px' src='${settings["vehicle${id}Icon"]}'><br><font style='font-size:20px;font-weight: bold'>${settings["vehicle${id}Name"]}</font></td>" + ((i % 4 == 3) ? "</tr>" : "")
                     i++
@@ -590,7 +543,7 @@ def VehiclesPage() {
                 if (state.vehicles) input name: "deleteVehicle", type: "button", title: "Delete Vehicle", width: 3
                 app.clearSetting("vehicleToDelete")
             } 
-
+            input name: "isDarkIconBackground", type: "bool", title: "Show Dark Background For Images In App?", description:"Facilitates image visibility in the app if using light colored images.", submitOnChange: true
         }
     }
 }
@@ -608,11 +561,23 @@ def updateAfterVehicleNameEdit() {
 }
 
 def clearVehicleSettings(String vehicleId) {
+    def vehicleNameToDelete = getNameOfVehicleWithId(vehicleId)
+    
     app.clearSetting("vehicle${vehicleId}Name")
     app.clearSetting("vehicle${vehicleId}Icon")
     if (state.people) {
         state.people.each { personId, person ->
             app.updateSetting("vehicle${vehicleId}Person${personId}Sensor",[type:"capability",value:[]])
+        }
+    }
+    
+    if (state.trips) {
+        state.trips.each { tripId, trip ->
+            def newTripVehicles = []
+            for (tripVehicle in settings["trip${tripID}Vehicles"]) {
+                if (tripVehicle != vehicleNameToDelete) newTripVehicles.add(tripVehicle)
+            }
+            app.updateSetting("trip${tripID}Vehicles",[type:"enum",value:newTripVehicles])
         }
     }
 }
@@ -655,6 +620,10 @@ def addVehicle(String id) {
     state.vehicles.add(id)
 }
 
+String getNameOfVehicleWithId(String vehicleId) {
+    return settings["vehicle${vehicleId}Name"]
+}
+
 String getIdOfVehicleWithName(String name) {
     for (id in state.vehicles) {
         if (settings["vehicle${id}Name"] == name) return id
@@ -677,7 +646,7 @@ def PlacesPage() {
             paragraph getInterface("header", " Manage Places")
             if (state.places) {                
                 def i = 0
-                def placesDisplay = "<table border=0>"
+                def placesDisplay = '<table width=100% border=0 style="float:right;' + ((isDarkIconBackground) ? 'background-color:black; color:white;"' : '"') + '>'
                 for (id in state.places) {
                     placesDisplay += "" + ((i % 4 == 0) ? "<tr>" : "") + "<td align=center><img border=0 style='max-width:100px' src='${settings["place${id}Icon"]}'><br><font style='font-size:20px;font-weight: bold'>${settings["place${id}Name"]}</font></td>" + ((i % 4 == 3) ? "</tr>" : "")
                     i++
@@ -762,7 +731,7 @@ def PlacesPage() {
                 if (state.places) input name: "deletePlace", type: "button", title: "Delete Place", width: 3
                 app.clearSetting("placeToDelete")
             } 
-
+            input name: "isDarkIconBackground", type: "bool", title: "Show Dark Background For Images In App?", description:"Facilitates image visibility in the app if using light colored images.", submitOnChange: true
         }
     }
 }
@@ -782,6 +751,13 @@ def clearPlaceSettings(String placeId) {
     app.updateSetting("place${placeId}GarageDoor",[type:"capability",value:[]])
     app.updateSetting("place${placeId}ContactSensor",[type:"capability",value:[]])
     app.updateSetting("place${placeId}Switch",[type:"capability",value:[]])
+    
+    if (state.trips) {
+        state.trips.each { tripId, trip ->
+            if (settings["trip${tripID}Origin"]) app.clearSetting("trip${tripID}Origin")
+            if (settings["trip${tripID}Destination"]) app.clearSetting("trip${tripID}Destination")
+        }
+    }
 }
 
 def updateAfterPlaceNameEdit() {
@@ -883,6 +859,15 @@ def RestrictionsPage() {
     }
 }
 
+String getRestrictedModesDescription() {
+    def description = ""
+    for (i=0; i < restrictedModes.size(); i++) {
+         description += restrictedModes[i] 
+        if (i != restrictedModes.size()-1) description += ", "
+    }
+    return description
+}
+
 Boolean isRestricted() {
     Boolean isRestricted = false     
     
@@ -918,7 +903,7 @@ def TrackerPage() {
             input name: "circleBackgroundColor", type: "text", title: "Circle background color", required: false, defaultValue: circleBackgroundColorDefault
             input name: "timeFormat", type: "enum", title: "Time Format", options: ["12 Hour", "24 Hour"], required: false, defaultValue: timeFormatDefault
             input name: "trafficDelayThreshold", type: "number", title: "Consider traffic bad when traffic delays arrival by how many more minutes than usual?", required: false, defaultValue: trafficDelayThresholdDefault
-            input name: "isPreferredRouteDisplayed", type: "boolean", title: "Display recommended route even if recommend preferred route?", required: false, defaultValue: false
+            input name: "isPreferredRouteDisplayed", type: "bool", title: "Display recommended route even if recommend preferred route?", required: false, defaultValue: isPreferredRouteDisplayedDefault
             input name: "fetchInterval", type: "number", title: "Interval (mins) for Checking Travel Conditions", required: false, defaultValue: fetchIntervalDefault
             input name: "tripPreCheckMins", type: "number", title: "Number of Minutes Before Earliest Departure Time to Check Travel Conditions", required: false, defaultValue: tripPreCheckMinsDefault
             input name: "postArrivalDisplayMins", type: "number", title: "Number of Minutes to Display Trip After Arrival", required: false, defaultValue: postArrivalDisplayMinsDefault
@@ -1148,8 +1133,8 @@ def startTripForPerson(String personId, String tripId) {
     state.people[personId]?.current.trip.id = tripId
     state.people[personId]?.current.trip.departureTime = new Date().getTime()
     
-    def routes = getTripWithRoutes(tripId, true).routes // force update of route information 
-    state.people[personId]?.current.trip.eta = getETADate(routes[0].duration).getTime()
+    def bestRoute = getBestRoute(tripId, true) // force update of route information 
+    state.people[personId]?.current.trip.eta = getETADate(bestRoute.duration).getTime()
      
     performDepartureActionsForTrip(personId, tripId)
 }
@@ -1233,11 +1218,10 @@ def controlArrivalSwitches(String tripId) {
 def pushLateNotification(String tripId) {
     // this method is called before the trip has started, or upon the trip starting, but not after the trip has started
     if (isLateNotificationConfigured(tripId)) {
-        def routes = getTripWithRoutes(tripId).routes
-        if (routes) {
-            logDebug("retrieved routes: ${routes}")
-            def bestRouteDuration = routes[0].duration
-            def eta = getETADate(routes[0].duration)
+        def bestRoute = getBestRoute(tripId)
+        if (bestRoute) {
+            def bestRouteDuration = bestRoute.duration
+            def eta = getETADate(bestRoute.duration)
             def etaStr = extractTimeFromDate(eta)
             def targetArrival = toDateTime(settings["trip${tripId}TargetArrivalTime"])
             if (eta.after(targetArrival)) {
@@ -1269,31 +1253,28 @@ def isLateNotificationConfigured(String tripId) {
 
 def pushRouteRecommendation(String tripId, String personId = null) {
     if (isDeparturePushConfigured(tripId) && isDeparturePushAllowed(tripId, personId)) {
-        def routes = getTripWithRoutes(tripId).routes
-        if (routes) {
-            def bestRoute = routes[0].summary
-            def bestRouteDuration = routes[0].duration
-            def etaDate = getETADate(routes[0].duration)
+        def bestRoute = getBestRoute(tripId)
+        if (bestRoute) {
+            def etaDate = getETADate(bestRoute.duration)
             def eta = extractTimeFromDate(etaDate)
-            def isPreferred = isPreferredRoute(tripId, bestRoute)
+            def isPreferred = isPreferredRoute(tripId, bestRoute.summary)
         
-            def nextBestRoute = routes[1].summary
-            def nextBestRouteDuration = routes[1].duration
-            def fasterBy = Math.round((nextBestRouteDuration - bestRouteDuration)/60)
+            def nextBestRoute = getSecondBestRoute(tripId)
+            def fasterBy = Math.round((nextBestRoute.duration - bestRoute.duration)/60)
 
             if (isPreferred && fasterBy < 0) {
-                settings["trip${tripId}DeparturePushDevices"].deviceNotification("Take ${bestRoute} as the preferred route, for ${eta} arrival. But ${nextBestRoute} is ${fasterBy} mins faster.")
+                settings["trip${tripId}DeparturePushDevices"].deviceNotification("Take ${bestRoute.summary} as the preferred route, for ${eta} arrival. But ${nextBestRoute.summary} is ${fasterBy*-1} mins faster.")
             }
             else {
-                settings["trip${tripId}DeparturePushDevices"].deviceNotification("Take ${bestRoute} for ${eta} arrival. Faster than ${nextBestRoute} by ${fasterBy} mins.")
+                settings["trip${tripId}DeparturePushDevices"].deviceNotification("Take ${bestRoute.summary} for ${eta} arrival. Faster than ${nextBestRoute.summary} by ${fasterBy} mins.")
             }
         
-            if (personId != null) state.people[personId].current.trip.recommendedRoute = bestRoute
+            if (personId != null) state.people[personId].current.trip.recommendedRoute = bestRoute.summary
             else {
                  // predeparture recommendation that is not specific to a person
                 for (personName in settings["trip${tripId}People"]) {
                     def id = getIdOfPersonWithName(personName)
-                    state.people[id].current.trip.recommendedRoute = bestRoute
+                    state.people[id].current.trip.recommendedRoute = bestRoute.summary
                }            
             }
         }
@@ -1308,18 +1289,17 @@ def isDeparturePushConfigured(String tripId) {
 def isDeparturePushAllowed(String tripId, String personId = null) {
     def isAllowed = true
     
-    def routes = getTripWithRoutes(tripId).routes
-    def bestRoute = routes[0].summary   
+    def bestRoute = getBestRoute(tripId)  
     
     if (settings["trip${tripId}OnlyPushIfNonPreferred"] && settings["trip${tripId}PreferredRoute"]) {
-        if (isPreferredRoute(tripId, bestRoute)) {
+        if (isPreferredRoute(tripId, bestRoute.summary)) {
             isAllowed = false
             log.info "Preferred Route Best. No Push Notification To Be Sent."      
         }                
     }
     
     if (personId != null) {
-        if (state.people[personId].current.trip.recommendedRoute != null && state.people[personId].current.trip.recommendedRoute == bestRoute) {
+        if (state.people[personId].current.trip.recommendedRoute != null && state.people[personId].current.trip.recommendedRoute == bestRoute.summary) {
             isAllowed = false
             log.info "Route already recommended to person. No Push Notification To Be Sent."
         }
@@ -1328,7 +1308,7 @@ def isDeparturePushAllowed(String tripId, String personId = null) {
         // predeparture push taking place. Only send push if no person has already been recommended a route.
         for (personName in settings["trip${tripId}People"]) {
             def id = getIdOfPersonWithName(personName)
-            if (state.people[id].current.trip.recommendedRoute != null && state.people[id].current.trip.recommendedRoute == bestRoute) {
+            if (state.people[id].current.trip.recommendedRoute != null && state.people[id].current.trip.recommendedRoute == bestRoute.summary) {
                 isAllowed = false
                 log.info "Route already recommended. No Push Notification To Be Sent."
            }
@@ -1374,6 +1354,7 @@ def isInPostArrivalDisplayWindow(String personId) {
 def updateTracker(String personId) {
     logDebug("Updating tracker for personId ${personId}")
     def tracker = getTracker(personId)
+    if (!tracker) logDebug("Did not find tracker for personId ${personId}. Nothing updated.")
     if (tracker) {
         
         def scale = getTileScaleSetting()/100
@@ -1393,12 +1374,12 @@ def updateTracker(String personId) {
         def durationTop = Math.round(-145*scale)
         def durationLeft = Math.round(43*scale)
     
-        def circleColor = getCircleBackgroundColor()
+        def circleColor = getCircleBackgroundColorSetting()
         
        def placeOfPresenceById = getPlaceOfPresenceById(personId)
        def placeOfPresenceByName = getPlaceOfPresenceByName(personId)
        def vehicleIdPresentIn = getIdOfVehiclePresentIn(personId)
-            
+
        def presenceIcon = null  
        // generally, prioritize showing presence in vehicle over presence at place. Except when in post arrival display window, which is handled below
        if (vehicleIdPresentIn != null) presenceIcon = getVehicleIconById(vehicleIdPresentIn)
@@ -1408,12 +1389,12 @@ def updateTracker(String personId) {
         // write html with as few characters as possible, to keep under 1024 (tile size limit in Hubitat)
 
         String style = '<style type="text/css">'
-        style += '@keyframes f { from {background: ' + circleColor + ';} to {background: white;}}'
-        style += '@keyframes fR { from {background: red;} to {background: white;}}'
+        style += '@keyframes f { from {background:' + circleColor + ';opacity:1} to {opacity:0}}'
+        style += '@keyframes fR { from {background:red;opacity:1} to {opacity:0}}'
         style += '.r {position:relative;text-align:center;}'
-        style += '.txt {font:bold Oswald, sans-serif;}'
-        style += '.rTxt {font-color: red;}'
-        style += '.cir {z-index: 2;width:' + circleSize + 'px;height:' + circleSize + 'px;background: ' + circleColor + '; border:1px solid black;border-radius:50%;}'
+        style += '.txt {font:bold Oswald,sans-serif;}'
+        style += '.rTxt {font-color:red;}'
+        style += '.cir {z-index:2;width:' + circleSize + 'px;height:' + circleSize + 'px;background: ' + circleColor + '; border:1px solid black;border-radius:50%;}'
         style += '</style>'   
         logDebug("Style length is ${style.length()}")
         
@@ -1426,14 +1407,10 @@ def updateTracker(String personId) {
            
            def tripId = state.people[personId]?.current.trip.id
            logDebug("Tracker for personId ${personId} with active tripID ${tripId}")
-           def routes = getTripWithRoutes(tripId).routes
-           logDebug("Retrieved routes for trip ${tripId} are: ${routes}. Route 0 is ${routes[0]}. Route '0' is ${routes['0']}")
-           def bestRoute = routes[0].summary
-           def bestRouteDuration = routes[0].duration
-           def bestRouteTrafficDelay = routes[0].trafficDelay
-           def relativeTrafficDelay = bestRouteTrafficDelay - state.trips[tripId].averageTrafficDelay
+           def bestRoute = getBestRoute(tripId)
+           def relativeTrafficDelay = bestRoute.trafficDelay - state.trips[tripId].averageTrafficDelay
            
-           def isPreferred = isPreferredRoute(tripId, bestRoute)
+           def isPreferred = isPreferredRoute(tripId, bestRoute.summary)
            def isPreferredRouteSet = isPreferredRouteSet(tripId)
            
            def routeAlert = false
@@ -1442,6 +1419,7 @@ def updateTracker(String personId) {
            
            html += '<div><img class="r cir" style="left:' + presenceCircleLeftTrip + 'px;top:' + presenceCircleTopTrip + 'px;" src="' + presenceIcon + '"></div>'           
            html += '<div><img class="r cir" style="left:' + destCircleLeftTrip + 'px; top:' + destCircleTopTrip + 'px;animation: ' + ((routeAlert) ? "fR" : "f") + ' 2s infinite alternate;" src="' + getDestinationIcon(tripId) + '"></div>'
+           
            
            if (isPersonOnTrip(personId)) {
                // display ETA if already departed on trip
@@ -1464,10 +1442,10 @@ def updateTracker(String personId) {
            }
            else {
                // otherwise display expected duration of trip
-               html += '<div style="left: ' + durationLeft + 'px;top:' + durationTop + 'px;font-size:0.8vw;" class="r txt' + ((routeAlert) ? " rTxt" : "") + '">' + formatTimeMins(bestRouteDuration) + '</div>' 
+               html += '<div style="left: ' + durationLeft + 'px;top:' + durationTop + 'px;font-size:0.8vw;" class="r txt' + ((routeAlert) ? " rTxt" : "") + '">' + formatTimeMins(bestRoute.duration) + '</div>' 
            
                if (!isPreferredRouteSet || (isPreferredRouteSet && !isPreferred) || (isPreferredRouteSet && isPreferred && getIsPreferredRouteDisplayedSetting())) {
-                   html += '<div style="left:0px;top:' + textBottom + 'px;font-size:0.8vw;" class="r txt' + ((routeAlert) ? " rTxt" : "") + '">' + bestRoute + '</div>' 
+                   html += '<div style="left:0px;top:' + textBottom + 'px;font-size:0.8vw;" class="r txt' + ((routeAlert) ? " rTxt" : "") + '">' + bestRoute.summary + '</div>' 
                    
                    
         // TO DO: show countdown to departure to arrive on time?
@@ -1476,7 +1454,7 @@ def updateTracker(String personId) {
         //    departureCountDownStr = formatTime(departureCountDown)
                }      
            }
-               
+           html += '<svg width="100px" height="100px" viewBox="-1 0 200 100"><style>polygon {transition: all 1s cubic-bezier(.2,1,.3,1);fill: #FF4136;animation: arrow-anim 3s cubic-bezier(.2,1,.3,1) infinite;}@keyframes arrow-anim {0% {opacity: 1;transform: translateX(0);}5% {transform: translateX(-0.3rem);}100% {transform: translateX(3rem);opacity: 0;}}</style><polygon points="0 20, 50 50, 0 80"/><polygon points="70 20, 120 50, 70 80"/><polygon points="140 20, 200 50, 140 80"/></svg>'
        }
         else { 
             def isPostArrival = isInPostArrivalDisplayWindow(personId)
@@ -1516,7 +1494,37 @@ def updateTracker(String personId) {
         tracker.sendEvent(name: 'tracker', value: html)
         tracker.sendEvent(name: 'presence', value: placeOfPresenceByName)  
 
+/*
+Arrow animation?
+  <svg width="300px" height="100px" viewBox="-1 0 200 100" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<style>
 
+    polygon {
+      transition: all 1s cubic-bezier(.2,1,.3,1);
+      fill: #FF4136;
+      animation: arrow-anim 3s cubic-bezier(.2,1,.3,1) infinite;
+    }
+
+@keyframes arrow-anim {
+	0% {
+		opacity: 1;
+		transform: translateX(0);
+	}
+	5% {
+		transform: translateX(-0.3rem);
+	}
+	100% {
+		transform: translateX(3rem);
+		opacity: 0;
+	}
+}
+
+</style>
+          <polygon points="0 20, 50 50, 0 80"/>
+          <polygon points="70 20, 120 50, 70 80"/>
+          <polygon points="140 20, 200 50, 140 80"/>
+  </svg>
+*/
         // show sleep score when integreate Withings Sleep
     }   
 }
@@ -1669,6 +1677,7 @@ boolean atDestinationOfCurrentTrip(personId) {
 def handleVehicleChange(String personId) {
     // first update state based on impact of change to trip status
     logDebug("Handling Vehicle Change for person ${personId}")
+
     // did vehicle change start a trip?
     state.trips.each { tripId, trip ->
          if (inTripVehicle(personId, tripId) && areDepartureConditionsMet(tripId) && !isPersonOnTrip(personId, tripId)) {
@@ -1676,14 +1685,12 @@ def handleVehicleChange(String personId) {
              startTripForPerson(personId, tripId)             
          }
     }
-    
     // did vehicle change end a trip?
     def currentTripId = state.people[personId]?.current.trip.id
     if (isPersonOnTrip(personId) && !inTripVehicle(personId, currentTripId) && !mostPreferredArrivalTriggersConfigured(personId, currentTripId) && acceptableArrivalTriggersConfigured(personId, currentTripId)) {
         // Exiting of a vehicle specified for the trip while the trip was in progress COULD mean that the trip just ended. But it could also mean that the person stopped on the way to the destination, but has not yet arrived. So, only detect arrival based on vehicle presence if it is the most acceptable way possible given the current sensor configuration.                
         endCurrentTripForPerson(personId) 
     }
-    
     // then update Tracker device (which will indicate any tripId stored at state.people[personId]?.current.trip.id as well as store, for a period of time, any tripId stored at state.people[personId]?.previous.trip.id)
     updateTracker(personId)
 }
@@ -1974,11 +1981,12 @@ def didChangeVehicle(String personId, String vehicleId) {
 }
 
 def changePersonVehicle(String personId, String vehicleId) {    
-    state.people[personId]?.previous.vehicle.id = state.people[personId]?.current.vehicle.id
-    state.people[personId]?.previous.vehicle.arrival = state.people[personId]?.current.vehicle.arrival
-    state.people[personId]?.previous.vehicle.departure = new Date().getTime()
-    state.people[personId]?.current.vehicle.arrival = (vehicleId) ? new Date().getTime() : null
-    state.people[personId]?.current.vehicle.id = vehicleId
+    state.people[personId].previous.vehicle.id = state.people[personId]?.current.vehicle.id
+    state.people[personId].previous.vehicle.arrival = state.people[personId]?.current.vehicle.arrival
+    state.people[personId].previous.vehicle.departure = new Date().getTime()
+    state.people[personId].current.vehicle.arrival = (vehicleId) ? new Date().getTime() : null
+    state.people[personId].current.vehicle.id = (vehicleId) ? vehicleId : null
+    logDebug("Changed Person ${personId} current vehicleID to ${(state.people[personId].current.vehicle.id) ? state.people[personId].current.vehicle.id : 'null'} with arrival at ${(state.people[personId].current.vehicle.arrival) ? state.people[personId].current.vehicle.arrival : 'null'}")
     handleVehicleChange(personId)
 }
 
@@ -2060,7 +2068,7 @@ def TripsPage() {
             paragraph getInterface("header", " Manage Trips")
             if (state.trips) {
                 def i = 0
-                def tripsDisplay = "<table align=left border=0 margin=0>"
+                def tripsDisplay = '<table align=left border=0 margin=0 width=100%' + ((isDarkIconBackground) ? ' style="background-color:black; color:white;"' : '') + '>'
                 state.trips.each { tripId, trip ->
                     tripsDisplay += "" + ((i % 2 == 0) ? "<tr>" : "") + "<td align=center style:'width=50%'><img style='max-width:100px' border=0  src='${getPlaceIcon(settings["trip${tripId}Origin"])}'><img style='max-width:100px' border=0 src='${getPlaceIcon(settings["trip${tripId}Destination"])}'><br><font style='font-size:20px;font-weight: bold'>${getNameOfTripWithId(tripId)}</font></td>" + ((i % 4 == 1) ? "</tr>" : "")
                     i++
@@ -2108,7 +2116,7 @@ def TripsPage() {
                 if (state.trips) input name: "deleteTrip", type: "button", title: "Delete Trip", width: 3
                 app.clearSetting("tripToDelete")
             } 
-
+            input name: "isDarkIconBackground", type: "bool", title: "Show Dark Background For Images In App?", description:"Facilitates image visibility in the app if using light colored images.", submitOnChange: true
         }
 
     }
@@ -2261,7 +2269,7 @@ def getIsPreferredRouteDisplayedSetting() {
     return (isPreferredRouteDisplayed) ? isPreferredRouteDisplayed : isPreferredRouteDisplayedDefault
 }
 
-def getCircleBackgroundColor() {
+def getCircleBackgroundColorSetting() {
     return (circleBackgroundColor) ? circleBackgroundColor : circleBackgroundColorDefault
 }
 
@@ -2432,10 +2440,10 @@ def getTripWithRoutes(String tripId, Boolean doForceUpdate=false) {
                 def duration = route.legs[0].duration_in_traffic?.value
                 def trafficDelay = (route.legs[0].duration_in_traffic?.value - route.legs[0].duration?.value)
                 def distance = route.legs[0].distance.text
-                state.trips[tripId].routes[i] = [summary: summary, duration: duration, trafficDelay: trafficDelay, distance: distance]
+                state.trips[tripId].routes[i.toString()] = [summary: summary, duration: duration, trafficDelay: trafficDelay, distance: distance]
             }
             state.trips[tripId].routesAsOf = new Date().getTime()
-            def bestRouteTrafficDelay = state.trips[tripId].routes[0].trafficDelay
+            def bestRouteTrafficDelay = state.trips[tripId].routes['0'].trafficDelay
             if (!state.trips[tripId].averageTrafficDelay) {
                 state.trips[tripId].averageTrafficDelay = bestRouteTrafficDelay
                 state.trips[tripId].numSamplesForAverage = 1
@@ -2453,6 +2461,17 @@ def getTripWithRoutes(String tripId, Boolean doForceUpdate=false) {
     }
     // now have state.trips[tripId] populated with routes, if wasn't already or if was stale
     return state.trips[tripId]
+}
+
+def getBestRoute(String tripId, Boolean doForceUpdate=false) {
+    def routes = getTripWithRoutes(tripId, doForceUpdate).routes
+    return routes['0']
+}
+
+
+def getSecondBestRoute(String tripId, Boolean doForceUpdate=false) {
+    def routes = getTripWithRoutes(tripId, doForceUpdate).routes
+    return routes['1']
 }
 
 // ### ACT METHODS ###
