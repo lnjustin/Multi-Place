@@ -6,19 +6,8 @@
     - animate arrow between origin and destination of trip
     - let color of arrow indicate how bad traffic is compared to usual (yellow, red, etc.)
     - after arrival, color of destinatoin indicates whether late (green vs. red)
-    - if presence sensor for person specified, display "not left yet" on tile if hasn't left?
     - send push notification or turn on/off switch if bad traffic (update tile with how many minutes in advance need to leave or countdown to departure)
-
-    - tile options
-        - display duration of presence?
---> Have different options for format of tile. That way, people can share any modifications to it and easily incorporate into the app
-    
-
-    - tap on dashboard tile brings up larger display with map, address details, etc.
-
-
-    TO DO:
-        - Handle if never arrive at destination of trip? trip timeout?
+    - Handle if never arrive at destination of trip? trip timeout?
 
  */
 import groovy.json.*
@@ -1438,7 +1427,7 @@ def updateTracker(String personId) {
                    }
                }
                
-               html += '<div style="left:0px;top:' + textBottom + 'px;font-size:1.5vw;" class="r txt' + ((lateAlert) ? " rTxt" : "") + '">' + extractTimeFromDate(etaDate) + '</div>'
+               html += '<div style="left:0px;top:' + textBottom + 'px;font-size:1.2vw;" class="r txt' + ((lateAlert) ? " rTxt" : "") + '">' + extractTimeFromDate(etaDate) + '</div>'
            }
            else {
                // otherwise display expected duration of trip
@@ -1454,7 +1443,7 @@ def updateTracker(String personId) {
         //    departureCountDownStr = formatTime(departureCountDown)
                }      
            }
-           html += '<svg width="100px" height="100px" viewBox="-1 0 200 100"><style>polygon {transition: all 1s cubic-bezier(.2,1,.3,1);fill: #FF4136;animation: arrow-anim 3s cubic-bezier(.2,1,.3,1) infinite;}@keyframes arrow-anim {0% {opacity: 1;transform: translateX(0);}5% {transform: translateX(-0.3rem);}100% {transform: translateX(3rem);opacity: 0;}}</style><polygon points="0 20, 50 50, 0 80"/><polygon points="70 20, 120 50, 70 80"/><polygon points="140 20, 200 50, 140 80"/></svg>'
+         //  html += '<svg width="100px" height="100px" viewBox="-1 0 200 100"><style>polygon {transition: all 1s cubic-bezier(.2,1,.3,1);fill: #FF4136;animation: arrow-anim 3s cubic-bezier(.2,1,.3,1) infinite;}@keyframes arrow-anim {0% {opacity: 1;transform: translateX(0);}5% {transform: translateX(-0.3rem);}100% {transform: translateX(3rem);opacity: 0;}}</style><polygon points="0 20, 50 50, 0 80"/><polygon points="70 20, 120 50, 70 80"/><polygon points="140 20, 200 50, 140 80"/></svg>'
        }
         else { 
             def isPostArrival = isInPostArrivalDisplayWindow(personId)
@@ -1483,7 +1472,7 @@ def updateTracker(String personId) {
                      }
                  }
                 
-                 html += '<div style="left:0px;top:' + textBottomSingle + 'px;font-size:1.5vw;" class="r txt' + ((lateAlert) ? " rTxt" : "") + '">' + extractTimeFromDate(arrivalDateTime) + '</div>'
+                 html += '<div style="left:0px;top:' + textBottomSingle + 'px;font-size:1.2vw;" class="r txt' + ((lateAlert) ? " rTxt" : "") + '">' + extractTimeFromDate(arrivalDateTime) + '</div>'
              }
             else if (placeOfPresenceById == null) {
                 html += '<div class="r txt" style="left:0px;top:' + textBottomSingle + 'px;font-size:0.8vw;">' + placeOfPresenceByName + '</div>'    
