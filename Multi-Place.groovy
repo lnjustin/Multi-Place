@@ -3,7 +3,7 @@
     - Multi-Place Presence Tracker with Travel Advisor, Powered by Google Directions API
 
  * TO DO: 
-    - animate arrow between origin and destination of trip
+    - animat    - animate arrow between origin and destination of trip
     - let color of arrow indicate how bad traffic is compared to usual (yellow, red, etc.)
     - after arrival, color of destinatoin indicates whether late (green vs. red)
     - send push notification or turn on/off switch if bad traffic (update tile with how many minutes in advance need to leave or countdown to departure)
@@ -11,6 +11,7 @@
     - Handle cloud endpoint (does nothing right now)
     - repository for icons, so people can push built icons for sharing
     - organize, comment code
+- integrate Sleep
 
  */
 import groovy.json.*
@@ -853,9 +854,11 @@ def RestrictionsPage() {
 
 String getRestrictedModesDescription() {
     def description = ""
-    for (i=0; i < restrictedModes.size(); i++) {
-         description += restrictedModes[i] 
-        if (i != restrictedModes.size()-1) description += ", "
+    if (restrictedModes) {
+         for (i=0; i < restrictedModes.size(); i++) {
+             description += restrictedModes[i] 
+            if (i != restrictedModes.size()-1) description += ", "
+        }
     }
     return description
 }
