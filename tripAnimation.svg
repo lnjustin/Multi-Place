@@ -1,4 +1,4 @@
-<svg height="200" width="1200" viewBox="0 0 200 200" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<svg viewBox="-5 0 630 110">
 <defs>
   <mask id="mask1" x="0" y="0" width="700" height="110" >
 <rect x="50" y="0" width="500" height="110" style="stroke:none; fill:white" />
@@ -14,11 +14,11 @@
 <circle z-index="2" cx="50" cy="55" r="49" stroke-width="6" stroke="black" fill="gray"/>
 <circle z-index="2" cx="550" cy="55" r="49" stroke-width="6" stroke="black" fill="gray"/>
 
-<circle z-index="2" cx="550" cy="55" r="49" stroke-width="6" stroke="green" fill="none">
-  <animate attributeName="stroke-dasharray" values="154, 0, 154, 0; 0, 308, 0, 0; 0, 308, 0, 0" keyTimes="0; 0.5; 1" dur="3s" repeatCount="indefinite" />  
-  </circle>
+<circle id="greenCircle" z-index="2" cx="550" cy="55" r="49" stroke-width="6" stroke="green" fill="none"/>
+<animate id="fillGreen" xlink:href="#greenCircle" attributeName="stroke-dasharray" values="154, 0, 154, 0; 0, 308, 0, 0; 0, 308, 0, 0" keyTimes="0; 0.5; 1" dur="3s" repeatCount="indefinite" />  
   
-<circle z-index="2" cx="550" cy="55" r="49" stroke-width="6" stroke="green" fill="none">
-<animate attributeName="stroke-dasharray" values="0, 154, 0, 154; 0, 154, 0, 154; 0, 0, 308, 0" dur="3s" keyTimes="0; 0.5; 1" repeatCount="indefinite" />
+<circle id="blackCircle" z-index="2" cx="550" cy="55" r="49" stroke-width="6" stroke="green" fill="none"/>
+<animate id="fillBlack" xlink:href="#blackCircle" attributeName="stroke-dasharray" values="0, 154, 0, 154; 0, 154, 0, 154; 0, 0, 308, 0" dur="3s" keyTimes="0; 0.5; 1" repeatCount="indefinite" />
     </circle>
 </svg>
+
