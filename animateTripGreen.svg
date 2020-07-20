@@ -6,19 +6,19 @@
 </defs>
 
 <g mask="url(#mask1)">
-<polygon class="arrowFill" z-index="1" points="0,5 50,55, 0,105 0,80 25,55 0,30">
+<polygon z-index="1" points="0,5 50,55, 0,105 0,80 25,55 0,30" fill="green">
 <animateTransform attributeName="transform" type="translate" attributeType="XML" calcMode="spline" values="0, 0; 0, 0; 550, 0; 550, 0" keyTimes="0; .2; .6; 1" keySplines="1,.32,.36,.93;1,.32,.36,.93; 1,.32,.36,.93" dur="3s" repeatCount="indefinite" additive="sum"/> 
 </polygon>
 </g>
 
-<circle class="circleColor" z-index="2" cx="50" cy="55" r="49" stroke-width="6" stroke="black"/>
-<circle class="circleColor" z-index="2" cx="550" cy="55" r="49" stroke-width="6" stroke="black"/>
+<circle z-index="2" cx="50" cy="55" r="49" stroke-width="6" stroke="black" fill="gray"/>
+<circle z-index="2" cx="550" cy="55" r="49" stroke-width="6" stroke="black" fill="gray"/>
 
-<circle class="borderStroke" z-index="2" cx="550" cy="55" r="49" stroke-width="6" fill="none">
+<circle z-index="2" cx="550" cy="55" r="49" stroke-width="6" fill="none" stroke="green">
   <animate attributeName="stroke-dasharray" values="154, 0, 154, 0; 0, 308, 0, 0; 0, 308, 0, 0" keyTimes="0; 0.5; 1" dur="3s" repeatCount="indefinite" />  
   </circle>
   
-<circle class="borderStroke" z-index="2" cx="550" cy="55" r="49" stroke-width="6" fill="none">
+<circle z-index="2" cx="550" cy="55" r="49" stroke-width="6" fill="none" stroke="green">
 <animate attributeName="stroke-dasharray" values="0, 154, 0, 154; 0, 154, 0, 154; 0, 0, 308, 0" dur="3s" keyTimes="0; 0.5; 1" repeatCount="indefinite" />
     </circle>
 </svg>
