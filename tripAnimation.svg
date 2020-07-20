@@ -18,7 +18,7 @@
   <animate attributeName="stroke-dasharray" values="154, 0, 154, 0; 0, 308, 0, 0; 0, 308, 0, 0" keyTimes="0; 0.5; 1" dur="3s" repeatCount="indefinite" />  
   </circle>
   
-<circle z-index="2" cx="550" cy="55" r="49" stroke-width="6" stroke="green" fill="none"/>
+<circle z-index="2" cx="550" cy="55" r="49" stroke-width="6" stroke="green" fill="none">
 <animate attributeName="stroke-dasharray" values="0, 154, 0, 154; 0, 154, 0, 154; 0, 0, 308, 0" dur="3s" keyTimes="0; 0.5; 1" repeatCount="indefinite" />
     </circle>
 </svg>
