@@ -1,18 +1,31 @@
 /*
 
-    - Multi-Place Presence Tracker with Travel Advisor, Powered by Google Directions API
+    - Multi-Place Presence Tracker with Travel Advisor, Powered by Google Directions
+
+    - 
 
  * TO DO: 
-    - animat    - animate arrow between origin and destination of trip
-    - let color of arrow indicate how bad traffic is compared to usual (yellow, red, etc.)
-    - after arrival, color of destinatoin indicates whether late (green vs. red)
     - send push notification or turn on/off switch if bad traffic (update tile with how many minutes in advance need to leave or countdown to departure)
-    - Handle if never arrive at destination of trip? trip timeout?
-    - Handle cloud endpoint (does nothing right now)
+    - Make fetchTracker null safe (in case use old URL, won't get null pointer exception)
+    - built-in icons that come with app, including default icon (so can get the app up and running right away without having to find icons first)
+        - home
+        - work
+        - school
+        - church
+        - bed (when integrate Sleep)
+        - unknown (or not home)?
     - repository for icons, so people can push built icons for sharing
+    - README, instructions in app, link to JPG to SVG converter, link to SVG avatar creator, note that SVGs are imported so hit DONE in app to re-import if SVG changed
     - organize, comment code
-- integrate Sleep
+    - integrate Sleep
+    - periodically refresh import of SVG?
 
+    - Tracker options
+        - use only SVG files. Compatible with Sharptools. Avoids long attribute values. Not limited to 1024 characters.
+            - use cloud endpoint AND tracker (cloud endpoint requires refresh on the remote end, whereas tracker refreshes automatically)
+        - use non-SVG files. Compatible with any dashboard that supports HTML (native Hubitat or Sharply). Limited to 1024 characters. Longer attribute values.
+            - don't use cloud endpoint. pointless. use attribute instead.
+    --> when populating attribute, check to see if use all svg or not, and populate attribute accordingly.
  */
 import groovy.json.*
 import java.text.SimpleDateFormat
@@ -38,15 +51,17 @@ definition(
 @Field Integer cacheValidityDurationDefault = 120  // default number of seconds to cache directions/routes
 @Field Integer optionsCacheValidityDurationDefault = 900
 @Field String timeFormatDefault = "12 Hour"
-@Field Integer tileScaleDefault = 100
 @Field Boolean isPreferredRouteDisplayedDefault = false
 @Field String circleBackgroundColorDefault = "#808080"
+@Field String textColorDefault = "#000000"
 @Field Integer trafficDelayThresholdDefault = 10
+
+@Field String checkMark = "https://raw.githubusercontent.com/lnjustin/App-Images/master/checkMark.svg"
+@Field String xMark = "https://raw.githubusercontent.com/lnjustin/App-Images/master/xMark.svg"
 
 mappings
 {
-    path("/multiplace/html/:personId") { action: [ GET: "fetchHtmlTracker"] }
-    path("/multiplace/svg/:personId") { action: [ GET: "fetchSvgTracker"] }
+    path("/multiplace/:personId/:type") { action: [ GET: "fetchTracker"] }
 }
 
 preferences {
@@ -64,22 +79,30 @@ preferences {
 def mainPage() {
     dynamicPage(name: "mainPage") {
             section {
-                href(name: "PeoplePage", title: "Manage People", description: getPeopleDescription(), required: false, page: "PeoplePage")
-                href(name: "VehiclesPage", title: "Manage Vehicles", description: getVehiclesDescription(), required: false, page: "VehiclesPage")
-                href(name: "PlacesPage", title: "Manage Places", description: getPlacesDescription(), required: false, page: "PlacesPage")
+                
+                if (state.people) {
+                    href(name: "PeoplePage", title: "Manage People", description: getPeopleDescription(), required: false, page: "PeoplePage", image: checkMark)
+                    href(name: "VehiclesPage", title: "Manage Vehicles", description: getVehiclesDescription(), required: false, page: "VehiclesPage", image: checkMark)
+                    href(name: "PlacesPage", title: "Manage Places", description: getPlacesDescription(), required: false, page: "PlacesPage", image: checkMark)
+                }
+                else {
+                    href(name: "PeoplePage", title: "Manage People", description: "Add a person to get started.", required: false, page: "PeoplePage", image: xMark)
+                    href(name: "VehiclesPage", title: "Manage Vehicles", description: "Add at least one person before managing vehicles.", required: false, page: "", image: xMark)
+                    href(name: "PlacesPage", title: "Manage Places", description: "Add at least one person before managing places.", required: false, page: "", image: xMark)
+                }
+                
             }
             
   			section {
                 paragraph getInterface("header", " Manage Travel Advisor")
                 if (!api_key) {
-                    paragraph "Google API Key needed for Travel Advisory Functionality."
-                    apiInput()
+                    href(name: "TravelAPIPage", title: "Set Up Travel API Access", description: "Add API Access before managing trips.", required: false, page: "TravelAPIPage", image: xMark)
                 }
                 else {
-                    href(name: "TripsPage", title: "Manage Trips", description: getTripEnumList(), required: false, page: "TripsPage")
-                    href(name: "RestrictionsPage", title: "Manage Travel Advisor Restrictions", description: getRestrictedModesDescription(), required: false, page: "RestrictionsPage")
+                    href(name: "TripsPage", title: "Manage Trips", description: (state.trips ? getTripEnumList() : "No trips configured"), required: false, page: "TripsPage", image: (state.trips ? checkMark : xMark))
+                    href(name: "RestrictionsPage", title: "Manage Mode-Based Restrictions", description: (restrictedModes ? getRestrictedModesDescription() : "No restrictions configured. Restrict Travel Advisor by Hub Mode."), required: false, page: "RestrictionsPage", image: (restrictedModes ? checkMark : xMark))
+                    href(name: "TravelAPIPage", title: "Manage Travel API Access", description: "Travel API Access configured.", required: false, page: "TravelAPIPage", image: checkMark)
                     href(name: "TrackerPage", title: "Manage Tracker Settings", required: false, page: "TrackerPage")
-                    href(name: "TravelAPIPage", title: "Manage Travel API Access", required: false, page: "TravelAPIPage")
                     href(name: "AdvancedPage", title: "Manage Advanced Settings", required: false, page: "AdvancedPage")
                 }
 			}
@@ -109,7 +132,7 @@ def PeoplePage() {
                 def i = 0
                 def peopleDisplay = '<table width=100% border=0' + ((isDarkIconBackground) ? ' style="background-color:black; color:white;"' : '') + '>'
                 state.people.each { id, person ->
-                    peopleDisplay += "" + ((i % 4 == 0) ? "<tr>" : "") + "<td align=center><img border=0 style='max-width:100px' src='${settings["person${id}Avatar"]}'><br><font style='font-size:20px;font-weight: bold'>${settings["person${id}Name"]}</font></td>" + ((i % 4 == 3) ? "</tr>" : "")
+                    peopleDisplay += "" + ((i % 4 == 0) ? "<tr>" : "") + "<td align=center><img border=0 style='max-width:100px' src='${getPersonAvatar(id)}'><br><font style='font-size:20px;font-weight: bold'><a href='${getTrackerEndpoint(id)}'>${settings["person${id}Name"]}</a></font></td>" + ((i % 4 == 3) ? "</tr>" : "")
                     i++
                 }
                 peopleDisplay += "</table>"
@@ -122,6 +145,19 @@ def PeoplePage() {
                 input name: "person${state.lastPersonID}Avatar", type: "text", title: "URL to Avatar Image", submitOnChange: false, required: true
                 input name: "person${state.lastPersonID}Life360", type: "device.Life360User", title: "Life360 Device", submitOnChange: false, multiple: false, required: false
                 paragraph getInterface("note", "If the names of Places in ${app.name} are the same as those in Life360, this Person's presence in ${app.name} will follow his/her presence in Life360.")
+                
+                if (state.vehicles) {
+                    for (vehicleId in state.vehicles) {
+                        input name: "vehicle${vehicleId}Person${state.lastPersonID}Sensor", type: "capability.presenceSensor", title: "${settings["vehicle${vehicleId}Name"]} Presence Sensor for this person", submitOnChange: true, multiple: false, required: false, width: 4
+                    }
+                }
+                
+                if (state.places) {
+                    for (placeId in state.places) {
+                        input name: "place${placeId}Person${state.lastPersonID}Sensor", type: "capability.presenceSensor", title: "${settings["place${placeId}Name"]} Presence Sensor for this person", submitOnChange: true, multiple: false, required: false, width: 4
+                    }
+                }
+
                 input name: "submitNewPerson", type: "button", title: "Submit", width: 3
                 input name: "cancelAddPerson", type: "button", title: "Cancel", width: 3
             }
@@ -149,6 +185,18 @@ def PeoplePage() {
                     input name: "person${id}Name", type: "text", title: "Unique Name", submitOnChange: true, required: true
                     input name: "person${id}Avatar", type: "text", title: "URL to Avatar Image", submitOnChange: true, required: true
                     input name: "person${id}Life360", type: "device.Life360User", title: "Life360 Device", submitOnChange: true, multiple: false, required: false
+                    
+                    if (state.vehicles) {
+                        for (vehicleId in state.vehicles) {
+                           input name: "vehicle${vehicleId}Person${id}Sensor", type: "capability.presenceSensor", title: "${settings["vehicle${vehicleId}Name"]} Presence Sensor for this person", submitOnChange: true, multiple: false, required: false, width: 4
+                        }
+                    }
+                
+                    if (state.places) {
+                        for (placeId in state.places) {
+                            input name: "place${placeId}Person${id}Sensor", type: "capability.presenceSensor", title: "${settings["place${placeId}Name"]} Presence Sensor for this person", submitOnChange: true, multiple: false, required: false, width: 4
+                        }
+                    }
                 }
                 input name: "submitEditPerson", type: "button", title: "Done", width: 3
              //   input name: "cancelEditPerson", type: "button", title: "Cancel", width: 3
@@ -217,6 +265,7 @@ def addPerson(String id) {
 }
 
 def getPlaceOfPresenceById(String personId) {
+    logDebug("Getting place of presence for person ${personId}")
     return state.people[personId].current.place.id
 }
 
@@ -231,6 +280,10 @@ def getIdOfVehiclePresentIn(String personId) {
 
 def getEtaOfCurrentTrip(String personId) {
     return state.people[personId].current.trip.eta
+}
+
+Boolean isInVehicle(String personId) {
+    return state.people[personId].current.vehicle.id ? true : false
 }
 
 String getIdOfPersonWithName(String name) {
@@ -266,6 +319,7 @@ def deletePerson(String nameToDelete) {
     def idToDelete = getIdOfPersonWithName(nameToDelete)
     if (idToDelete && state.people) {       
         state.people.remove(idToDelete)
+        state.images.people[idToDelete] = null
         clearPersonSettings(idToDelete)
         deleteTracker(idToDelete)
     }
@@ -276,7 +330,7 @@ def clearPersonSettings(String personId) {
     
     app.clearSetting("person${personId}Name")
     app.clearSetting("person${personId}Avatar")
-    app.updateSetting("person${personId}Life360",[type:"capability",value:[]]) 
+    app.updateSetting("person${personId}Life360",[type:"device.Life360User",value:[]]) 
     
     if (state.vehicles) {
         for (vehicleId in state.vehicles) { 
@@ -466,7 +520,7 @@ def VehiclesPage() {
                 def i = 0
                 def vehicleDisplay = '<table width=100% border=0 style="float:right;' + ((isDarkIconBackground) ? 'background-color:black; color:white;"' : '"') + '>'
                 for (id in state.vehicles) {
-                    vehicleDisplay += "" + ((i % 4 == 0) ? "<tr>" : "") + "<td align=center><img border=0 style='max-width:100px' src='${settings["vehicle${id}Icon"]}'><br><font style='font-size:20px;font-weight: bold'>${settings["vehicle${id}Name"]}</font></td>" + ((i % 4 == 3) ? "</tr>" : "")
+                    vehicleDisplay += "" + ((i % 4 == 0) ? "<tr>" : "") + "<td align=center><img border=0 style='max-width:100px' src='${getVehicleIconById(id)}'><br><font style='font-size:20px;font-weight: bold'>${settings["vehicle${id}Name"]}</font></td>" + ((i % 4 == 3) ? "</tr>" : "")
                     i++
                 }
                 vehicleDisplay += "</table>"
@@ -480,7 +534,7 @@ def VehiclesPage() {
                 if (state.people) {
                     state.people.each { personId, person ->
                         def personDisplay = "<table border=0 margin=0><tr>"
-                        personDisplay+= "<td align=center><img border=0 style='max-width:100px' src='${settings["person${personId}Avatar"]}'>"
+                        personDisplay+= "<td align=center><img border=0 style='max-width:100px' src='${getPersonAvatar(personId)}'>"
                         personDisplay += "<br><font style='font-size:20px;font-weight: bold'>${settings["person${personId}Name"]}</font></td>"
                         personDisplay += "</tr></table>"
                         paragraph personDisplay
@@ -517,7 +571,7 @@ def VehiclesPage() {
                     if (state.people) {
                         state.people.each { personId, person ->
                             def personDisplay = "<table border=0 margin=0><tr>"
-                            personDisplay+= "<td align=center><img border=0 style='max-width:100px' src='${settings["person${personId}Avatar"]}'>"
+                            personDisplay+= "<td align=center><img border=0 style='max-width:100px' src='${getPersonAvatar(personId)}'>"
                             personDisplay += "<br><font style='font-size:20px;font-weight: bold'>${settings["person${personId}Name"]}</font></td>"
                             personDisplay += "</tr></table>"
                             paragraph personDisplay
@@ -629,6 +683,7 @@ def deleteVehicle(String nameToDelete) {
     def idToDelete = getIdOfVehicleWithName(nameToDelete)
     if (idToDelete && state.vehicles) {       
         state.vehicles.removeElement(idToDelete)
+        state.images.vehicles[idToDelete] = null
         clearVehicleSettings(idToDelete)
     }
 }
@@ -641,7 +696,7 @@ def PlacesPage() {
                 def i = 0
                 def placesDisplay = '<table width=100% border=0 style="float:right;' + ((isDarkIconBackground) ? 'background-color:black; color:white;"' : '"') + '>'
                 for (id in state.places) {
-                    placesDisplay += "" + ((i % 4 == 0) ? "<tr>" : "") + "<td align=center><img border=0 style='max-width:100px' src='${settings["place${id}Icon"]}'><br><font style='font-size:20px;font-weight: bold'>${settings["place${id}Name"]}</font></td>" + ((i % 4 == 3) ? "</tr>" : "")
+                    placesDisplay += "" + ((i % 4 == 0) ? "<tr>" : "") + "<td align=center><img border=0 style='max-width:100px' src='${getPlaceIconById(id)}'><br><font style='font-size:20px;font-weight: bold'>${settings["place${id}Name"]}</font></td>" + ((i % 4 == 3) ? "</tr>" : "")
                     i++
                 }
                 placesDisplay += "</table>"
@@ -654,11 +709,10 @@ def PlacesPage() {
                 paragraph getInterface("note", "Name Places in ${app.name} the the same as those in any associated Life360 account, in order for presence in ${app.name} to follow presence in Life360.")
                 input name: "place${state.lastPlaceID}Icon", type: "text", title: "URL to Place Icon", submitOnChange: false, required: true
                 input name: "place${state.lastPlaceID}Address", type: "text", title: "Address", submitOnChange: false, required: true
-                input name: "place${state.lastPlaceID}Hub", type: "bool", title: "Place of Hub Location?", submitOnChange: true, required: true, defaultValue: false
                 if (state.people) {
                         state.people.each { personId, person ->
                             def personDisplay = "<table border=0 margin=0><tr>"
-                            personDisplay+= "<td align=center><img border=0 style='max-width:100px' src='${settings["person${personId}Avatar"]}'>"
+                            personDisplay+= "<td align=center><img border=0 style='max-width:100px' src='${getPersonAvatar(personId)}'>"
                             personDisplay += "<br><font style='font-size:20px;font-weight: bold'>${settings["person${personId}Name"]}</font></td>"
                             personDisplay += "</tr></table>"
                             paragraph personDisplay
@@ -697,11 +751,10 @@ def PlacesPage() {
                     input name: "place${placeId}Name", type: "text", title: "Unique Name", submitOnChange: true, required: true
                     input name: "place${placeId}Icon", type: "text", title: "URL to Place Icon", submitOnChange: true, required: true
                     input name: "place${placeId}Address", type: "text", title: "Address", submitOnChange: true, required: true
-                    input name: "place${placeId}Hub", type: "bool", title: "Place of Hub Location?", submitOnChange: true, required: true, defaultValue: false
                     if (state.people) {
                         state.people.each { personId, person ->
                             def personDisplay = "<table border=0 margin=0><tr>"
-                            personDisplay+= "<td align=center><img border=0 style='max-width:100px' src='${settings["person${personId}Avatar"]}'>"
+                            personDisplay+= "<td align=center><img border=0 style='max-width:100px' src='${getPersonAvatar(personId)}'>"
                             personDisplay += "<br><font style='font-size:20px;font-weight: bold'>${settings["person${personId}Name"]}</font></td>"
                             personDisplay += "</tr></table>"
                             paragraph personDisplay
@@ -733,7 +786,6 @@ def clearPlaceSettings(String placeId) {
     app.clearSetting("place${placeId}Name")
     app.clearSetting("place${placeId}Icon")
     app.clearSetting("place${placeId}Address")
-    app.clearSetting("place${placeId}Hub")
     
     if (state.people) {
        state.people.each { personId, person ->
@@ -836,6 +888,7 @@ def deletePlace(String nameToDelete) {
     def idToDelete = getIdOfPlaceWithName(nameToDelete)
     if (idToDelete && state.places) {       
         state.places.removeElement(idToDelete)
+        state.images.places[idToDelete] = null
         clearPlaceSettings(idToDelete)
     }
 }
@@ -894,7 +947,7 @@ def TrackerPage() {
     dynamicPage(name: "TrackerPage") {
         section {
             paragraph getInterface("header", " Tracker Settings")
-            input name: "tileScale", type: "number", title: "Tracker Scale (%)", required: false, defaultValue: tileScaleDefault
+            input name: "textColor", type: "text", title: "Text color", required: false, defaultValue: textColorDefault
             input name: "circleBackgroundColor", type: "text", title: "Circle background color", required: false, defaultValue: circleBackgroundColorDefault
             input name: "timeFormat", type: "enum", title: "Time Format", options: ["12 Hour", "24 Hour"], required: false, defaultValue: timeFormatDefault
             input name: "trafficDelayThreshold", type: "number", title: "Consider traffic bad when traffic delays arrival by how many more minutes than usual?", required: false, defaultValue: trafficDelayThresholdDefault
@@ -925,6 +978,7 @@ def initialize() {
     unschedule()
     scheduleTimeTriggers()
     initializePresence()
+    initializeSVGImages()
     initializeTrackers()
 }
 
@@ -933,9 +987,107 @@ def initializePresence() {
         state.people.each { personId, person ->
             setPersonPlace(personId) 
             setPersonVehicle(personId)
+            
         }
     }
 }
+
+Boolean isSVG(String url) {
+   String extension = "";
+    def isSVG = false
+    if (url != null) {
+       int i = url.lastIndexOf('.');
+       if (i > 0) {
+           extension = url.substring(i+1).toLowerCase()
+       }
+
+        if (extension == "svg") isSVG = true
+    }
+    return isSVG
+}
+
+
+
+def initializeSVGImages() {
+    // prefetch SVG text from files
+    logDebug("Refetching SVG images.")
+    
+    state.images = [:]
+    if (state.people) {
+        state.images.people = [:]
+        state.people.each { personId, person ->
+            def imageUrl = getPersonAvatar(personId)
+            if (isSVG(imageUrl)) {
+                state.images.people[personId] = sanitizeSvg(imageUrl.toURL().text)
+            }
+        }
+    }
+    
+    if (state.places) {
+        state.images.places = [:]
+        for (placeId in state.places) {
+            def imageUrl = getPlaceIconById(placeId)
+            if (isSVG(imageUrl)) {
+                state.images.places[placeId] = sanitizeSvg(imageUrl.toURL().text)
+            }
+             
+        }
+    }
+    
+    if (state.vehicles) {
+        state.images.vehicles = [:]
+        for (vehicleId in state.vehicles) {
+            def imageUrl = getVehicleIconById(vehicleId)
+            if (isSVG(imageUrl)) {
+                state.images.vehicles[vehicleId] = sanitizeSvg(imageUrl.toURL().text)
+            }
+             
+        }
+    }    
+}
+
+String sanitizeSvg(String svg) {
+    String cleanSvg = svg
+  //  logDebug("unsanitized svg: ${groovy.xml.XmlUtil.escapeXml(svg)}")
+    def xmlDecStart = svg.indexOf("<?xml")
+    if (xmlDecStart > -1) {
+        def xmlDecEnd = svg.indexOf("?>")
+        cleanSvg = svg.substring(xmlDecEnd+2)
+    }
+  //  logDebug("svg without xml declaration: ${groovy.xml.XmlUtil.escapeXml(cleanSvg)}")
+    def svgStart = cleanSvg.indexOf("<svg")
+  //  logDebug("svgStart is ${svgStart}")
+    if (svgStart > -1) {
+        def svgEnd = cleanSvg.indexOf('>', svgStart)
+      //  logDebug("svgEnd is ${svgEnd}")
+        if (svgEnd > -1) {
+            String svgTag = cleanSvg.substring(svgStart, svgEnd)  
+         //   logDebug("SVG Tag is ${groovy.xml.XmlUtil.escapeXml(svgTag)}")
+            svgTag = svgTag.replaceAll('width="[^"]*', 'width="100%')
+            svgTag = svgTag.replaceAll('height="[^"]*', 'height="100%')
+          //  logDebug("Changed SVG Tag to ${groovy.xml.XmlUtil.escapeXml(svgTag)}")
+            cleanSvg = cleanSvg.replaceFirst("(<svg)([^>]*)", svgTag)
+         //   logDebug("sanitized svg: ${groovy.xml.XmlUtil.escapeXml(cleanSvg)}")
+        }
+    }
+    
+    return cleanSvg
+}
+
+/*
+import groovy.util.slurpersupport.GPathResult
+
+private static String convertSvgToString(GPathResult node) {
+    try {
+        Object builder = Class.forName("groovy.xml.StreamingMarkupBuilder").newInstance()
+        InvokerHelper.setProperty(builder, "encoding", "UTF-8")
+        Writable w = (Writable) InvokerHelper.invokeMethod(builder, "bindNode", node)
+        return w.toString()
+    } catch (Exception e) {
+        return "Couldn't convert node to string because: " + e.getMessage()
+    }
+}
+*/
 
 def scheduleTimeTriggers() {
     if (state.trips) {
@@ -1132,6 +1284,26 @@ def startTripForPerson(String personId, String tripId) {
     state.people[personId]?.current.trip.eta = getETADate(bestRoute.duration).getTime()
      
     performDepartureActionsForTrip(personId, tripId)
+    
+    def tripTimeOut = bestRoute.duration * 2
+    runIn(tripTimeOut, "timeOutTrip", [data: [personId: personId, tripId: tripId, originalDuration: bestRoute.duration]])
+}
+
+def timeOutTrip() {
+    def tripId = data.tripId
+    def personId = data.personId
+    def originalDuration = data.originalDuration
+    if (isPersonOnTrip(personId, tripId)) {
+        if (isInVehicle(personId) || isDriving(personId)) {
+            logDebug("Trip Timeout Postponed: Person ${personId} has not yet arrived at the destination of trip ${tripId} but is still  driving. Trip abort postponed.")
+            runIn(originalDuration, "timeOutTrip", [data: [personId: personId, tripId: tripId, originalDuration: originalDuration]])
+        }
+        else {
+            logDebug("Trip Timeout: Person ${personId} did not arrive at the destination of trip ${tripId} and is not currently driving. Trip being aborted.")
+            abortCurrentTripForPerson(personId)
+            updateTracker(personId)
+        }
+    }
 }
 
 def endCurrentTripForPerson(String personId) {
@@ -1148,6 +1320,16 @@ def endCurrentTripForPerson(String personId) {
     state.people[personId]?.current.trip.hasPushedLateNotice = null
     
     runIn(getPostArrivalDisplayMinsSetting()*60, "stopPostArrivalDisplay", [data: [personId: personId]])
+}
+
+def abortCurrentTripForPerson(String personId) {
+    logDebug("Aborting trip ${state.people[personId]?.current.trip.id} for person ${personId}")
+             
+    state.people[personId]?.current.trip.id = null
+    state.people[personId]?.current.trip.eta = null
+    state.people[personId]?.current.trip.departureTime = null      
+    state.people[personId]?.current.trip.recommendedRoute = null
+    state.people[personId]?.current.trip.hasPushedLateNotice = null
 }
 
 def stopPostArrivalDisplay(data) {
@@ -1335,8 +1517,7 @@ def isInPostArrivalDisplayWindow(String personId) {
         def secsSinceArrival = getSecondsSince(state.people[personId]?.previous.trip.arrivalTime)
         logDebug("PersonId ${personId} Arrived on tripID ${state.people[personId]?.previous.trip.id} ${secsSinceArrival} seconds ago.")
         if (secsSinceArrival < postArrivalSecs) {
-            def destinationName = getDestination(state.people[personId]?.previous.trip.id)
-            def destinationId = getIdOfPlaceWithName(destinationName)
+            def destinationId = getDestinationIdOfTrip(state.people[personId]?.previous.trip.id)
             if (destinationId == state.people[personId]?.current.place.id) {
                 // only display post arrival if still at destination of trip
                 inPostArrivalDisplayWindow = true
@@ -1346,204 +1527,9 @@ def isInPostArrivalDisplayWindow(String personId) {
     return inPostArrivalDisplayWindow
 }
 
-def updateTracker(String personId) {
-    logDebug("Updating tracker for personId ${personId}")
-    def tracker = getTracker(personId)
-    if (!tracker) logDebug("Did not find tracker for personId ${personId}. Nothing updated.")
-    if (tracker) {
-        
-        def scale = getTileScaleSetting()/100
-        def containerWidth = Math.round(125*scale)
-        def containerHeight = Math.round(125*scale)
-        def avatarSize = Math.round(100*scale)
-        def circleSize = Math.round(42*scale)
-        def presenceCircleLeft = Math.round(50*scale)
-        def presenceCircleTop = Math.round(-37*scale)
-        def presenceCircleLeftTrip = Math.round(-50*scale)
-        def presenceCircleTopTrip = Math.round(-37*scale)
-        def destCircleLeftTrip = Math.round(50*scale)
-        def destCircleTopTrip = Math.round(-80*scale)
-        def textTop = Math.round(-37*scale)
-        def textBottom = Math.round(-85*scale)
-        def textBottomSingle = Math.round(-45*scale)
-        def durationTop = Math.round(-145*scale)
-        def durationLeft = Math.round(43*scale)
-    
-        def circleColor = getCircleBackgroundColorSetting()
-        
-       def placeOfPresenceById = getPlaceOfPresenceById(personId)
-       def placeOfPresenceByName = getPlaceOfPresenceByName(personId)
-       def vehicleIdPresentIn = getIdOfVehiclePresentIn(personId)
-
-       def presenceIcon = null  
-       // generally, prioritize showing presence in vehicle over presence at place. Except when in post arrival display window, which is handled below
-       if (vehicleIdPresentIn != null) presenceIcon = getVehicleIconById(vehicleIdPresentIn)
-       else if (placeOfPresenceById != null) presenceIcon = getPlaceIconById(placeOfPresenceById)
-       // TO DO: icon if not present anywhere
-
-        // write html with as few characters as possible, to keep under 1024 (tile size limit in Hubitat)
-
-        String style = '<style type="text/css">'
-        style += '@keyframes f { from {background:' + circleColor + ';opacity:1} to {opacity:0}}'
-        style += '@keyframes fR { from {background:red;opacity:1} to {opacity:0}}'
-        style += '.r {position:relative;text-align:center;}'
-        style += '.txt {font:bold Oswald,sans-serif;}'
-        style += '.rTxt {font-color:red;}'
-        style += '.cir {z-index:2;width:' + circleSize + 'px;height:' + circleSize + 'px;background: ' + circleColor + '; border:1px solid black;border-radius:50%;}'
-        style += '</style>'   
-        logDebug("Style length is ${style.length()}")
-        
-       String html = style
-       html += '<div class="r" style="width:' + containerWidth + ';height:' + containerHeight + 'px;">'
-       html += '<div><img class="r" style="width:' + avatarSize + 'px;height:' + avatarSize + 'px;display:block;margin:auto;" src="' + getPersonAvatar(personId) + '"></div>'
-
-       if (state.people[personId]?.current.trip.id != null) {
-           // show current trip
-           
-           def tripId = state.people[personId]?.current.trip.id
-           logDebug("Tracker for personId ${personId} with active tripID ${tripId}")
-           def bestRoute = getBestRoute(tripId)
-           def relativeTrafficDelay = bestRoute.trafficDelay - state.trips[tripId].averageTrafficDelay
-           
-           def isPreferred = isPreferredRoute(tripId, bestRoute.summary)
-           def isPreferredRouteSet = isPreferredRouteSet(tripId)
-           
-           def routeAlert = false
-           if (relativeTrafficDelay > gettrafficDelayThresholdSetting()) routeAlert = true
-           if (isPreferredRouteSet && !isPreferred) routeAlert = true
-           
-           html += '<div><img class="r cir" style="left:' + presenceCircleLeftTrip + 'px;top:' + presenceCircleTopTrip + 'px;" src="' + presenceIcon + '"></div>'           
-           html += '<div><img class="r cir" style="left:' + destCircleLeftTrip + 'px; top:' + destCircleTopTrip + 'px;animation: ' + ((routeAlert) ? "fR" : "f") + ' 2s infinite alternate;" src="' + getDestinationIcon(tripId) + '"></div>'
-           
-           
-           if (isPersonOnTrip(personId)) {
-               // display ETA if already departed on trip
-
-               def etaUtc = getEtaOfCurrentTrip(personId)
-               def etaDate = new Date(etaUtc)
-               
-               def lateAlert = false
-               def target = settings["trip${tripId}TargetArrivalTime"]
-               if (target) {
-                   def targetArrival = toDateTime(target)
-                   if (etaDate.after(targetArrival)) {
-                       def secondsLate = getSecondsBetween(targetArrival, etaDate)
-                       def secsLateThreshold = settings["trip${tripId}LateNotificationMins"]*60
-                       if (secondsLate >= secsLateThreshold) lateAlert = true
-                   }
-               }
-               
-               html += '<div style="left:0px;top:' + textBottom + 'px;font-size:1.2vw;" class="r txt' + ((lateAlert) ? " rTxt" : "") + '">' + extractTimeFromDate(etaDate) + '</div>'
-           }
-           else {
-               // otherwise display expected duration of trip
-               html += '<div style="left: ' + durationLeft + 'px;top:' + durationTop + 'px;font-size:0.8vw;" class="r txt' + ((routeAlert) ? " rTxt" : "") + '">' + formatTimeMins(bestRoute.duration) + '</div>' 
-           
-               if (!isPreferredRouteSet || (isPreferredRouteSet && !isPreferred) || (isPreferredRouteSet && isPreferred && getIsPreferredRouteDisplayedSetting())) {
-                   html += '<div style="left:0px;top:' + textBottom + 'px;font-size:0.8vw;" class="r txt' + ((routeAlert) ? " rTxt" : "") + '">' + bestRoute.summary + '</div>' 
-                   
-                   
-        // TO DO: show countdown to departure to arrive on time?
-        //    def requiredDeparture = getRequiredDeparture(tripId, duration)
-        //    departureCountDown = getSecondsBetween(new Date(), requiredDeparture)
-        //    departureCountDownStr = formatTime(departureCountDown)
-               }      
-           }
-         //  html += '<svg width="100px" height="100px" viewBox="-1 0 200 100"><style>polygon {transition: all 1s cubic-bezier(.2,1,.3,1);fill: #FF4136;animation: arrow-anim 3s cubic-bezier(.2,1,.3,1) infinite;}@keyframes arrow-anim {0% {opacity: 1;transform: translateX(0);}5% {transform: translateX(-0.3rem);}100% {transform: translateX(3rem);opacity: 0;}}</style><polygon points="0 20, 50 50, 0 80"/><polygon points="70 20, 120 50, 70 80"/><polygon points="140 20, 200 50, 140 80"/></svg>'
-       }
-        else { 
-            def isPostArrival = isInPostArrivalDisplayWindow(personId)
-            // in post arrival display window for a period of time after arrive at the destination of a trip, as long as the person is still at that destination.
-            if (isPostArrival) {
-                // while in post arrival display window, prioritize display of presence at the trip's destination, even if the person is still in the vehicle. 
-                def destinationName = getDestination(state.people[personId]?.previous.trip.id)
-                def destinationId = getIdOfPlaceWithName(destinationName)
-                presenceIcon = getPlaceIconById(destinationId)
-                logDebug("Prioritizing presence at previous trip's destination over presence in vehicle, on the assumption that the person has just arrived at the destination and will be exiting the vehicle soon. So, go ahead and proactively update presence to provide a more real-time arrival indication.")
-            }
-            html += '<div><img class="r cir" style="left:' + presenceCircleLeft + 'px;top:' + presenceCircleTop + 'px;' + ((isPostArrival) ? "background:green;" : "") + '" src="' + presenceIcon + '"></div>' 
-             if (isPostArrival) {
-                 // show arrival at destination of any previous trip for X minutes according to getPostArrivalDisplayMinsSetting()*60
-                 def tripId = state.people[personId]?.previous.trip.id
-                 def arrivalUTCTime = state.people[personId]?.previous.trip.arrivalTime
-                 def arrivalDateTime = new Date(arrivalUTCTime)
-                 def lateAlert = false
-                 def target = settings["trip${tripId}TargetArrivalTime"]
-                 if (target) {
-                     def targetArrival = toDateTime(target)
-                     if (arrivalDateTime.after(targetArrival)) {
-                         def secondsLate = getSecondsBetween(targetArrival, arrivalDateTime)
-                         def secsLateThreshold = settings["trip${tripId}LateNotificationMins"]*60
-                         if (secondsLate >= secsLateThreshold) lateAlert = true
-                     }
-                 }
-                
-                 html += '<div style="left:0px;top:' + textBottomSingle + 'px;font-size:1.2vw;" class="r txt' + ((lateAlert) ? " rTxt" : "") + '">' + extractTimeFromDate(arrivalDateTime) + '</div>'
-             }
-            else if (placeOfPresenceById == null) {
-                html += '<div class="r txt" style="left:0px;top:' + textBottomSingle + 'px;font-size:0.8vw;">' + placeOfPresenceByName + '</div>'    
-            }
-        }
-        html += '</div>'
-        logDebug("Tracker length is ${html.length()}")
-        tracker.sendEvent(name: 'tracker', value: html)
-        tracker.sendEvent(name: 'presence', value: placeOfPresenceByName)  
-
-/*
-Arrow animation?
-  <svg width="300px" height="100px" viewBox="-1 0 200 100" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-<style>
-
-    polygon {
-      transition: all 1s cubic-bezier(.2,1,.3,1);
-      fill: #FF4136;
-      animation: arrow-anim 3s cubic-bezier(.2,1,.3,1) infinite;
-    }
-
-@keyframes arrow-anim {
-	0% {
-		opacity: 1;
-		transform: translateX(0);
-	}
-	5% {
-		transform: translateX(-0.3rem);
-	}
-	100% {
-		transform: translateX(3rem);
-		opacity: 0;
-	}
-}
-
-</style>
-          <polygon points="0 20, 50 50, 0 80"/>
-          <polygon points="70 20, 120 50, 70 80"/>
-          <polygon points="140 20, 200 50, 140 80"/>
-  </svg>
-*/
-        // show sleep score when integreate Withings Sleep
-    }   
-}
-
-def fetchSvgTracker() {
-    def personId = params.personId
-    def svg = null
-     // TO DO: build svg
-    render contentType: "image/svg+xml", data: svg, status: 200
-}
-
-def fetchHtmlTracker() {
-    // TO DO: return html
-    def personId = params.personId
-    def networkID = getTrackerId(personId)
-    def child = getChildDevice(networkID)
-    def svg = null
-    if (child) {
-        svg = child.tracker
-    }
-    else {
-        log.warn "No Tracker Device Found for personId ${personId}. No tracker fetched."
-    }
-    render contentType: "image/svg+xml", data: svg, status: 200
+def getDestinationIdOfTrip(String tripId) {
+    def destinationName = getDestination(tripId)
+    return getIdOfPlaceWithName(destinationName)    
 }
 
 def handlePlaceChange(String personId) {
@@ -1551,8 +1537,8 @@ def handlePlaceChange(String personId) {
     
     // Did the place change start a trip?
     state.trips.each { tripId, trip ->
-        if (isTripPerson(personId, tripId) && didDepartOrigin(personId, tripId) && areDepartureConditionsMet(tripId) && inTripVehicle(personId, tripId) && !isPersonOnTrip(personId, tripId)) {
-            // trip just started because (i) person scheduled for trip (ii) left origin; (iii) while departure conditions met; (iv) within a vehicle specified for the trip; and (iv) trip was not already in progress
+        if (isTripPerson(personId, tripId) && didDepartOrigin(personId, tripId) && areDepartureConditionsMet(tripId) && inTripVehicle(personId, tripId) && !isPersonOnTrip(personId, tripId) && !atDestinationOfTrip(personId, tripId)) {
+            // trip just started because (i) person scheduled for trip (ii) left origin; (iii) while departure conditions met; (iv) within a vehicle specified for the trip; (iv) trip was not already in progress; and (v) not already at destination (can't start a trip to the destination if already there)
             startTripForPerson(personId, tripId)
         }
     }
@@ -1562,6 +1548,13 @@ def handlePlaceChange(String personId) {
         // trip just ended   
         logDebug("Ending current trip for person ${personId}")
         endCurrentTripForPerson(personId)        
+    }
+    
+        
+    // Did the place change abort the person's current trip by arrival at the origin?
+    if (isPersonOnTrip(personId) && atOriginOfCurrentTrip(personId)) {
+        logDebug("Aborting current trip for person ${personId} since arrived back at the origin")
+        abortCurrentTripForPerson(personId)        
     }
     
     // then update Tracker device (which will indicate any tripId stored at state.people[personId]?.current.trip.id as well as store, for a period of time, any tripId stored at state.people[personId]?.previous.trip.id)
@@ -1655,7 +1648,15 @@ def isTripDay(String tripId) {
     logDebug("isTripDay is ${isTripDay}")
     return isTripDay
 }
-    
+     
+boolean atDestinationOfTrip(String personId, String tripId) {
+    def atDest = false
+    if (state.people[personId]?.current?.place?.id == getDestinationIdOfTrip(tripId)) {
+        atDest = true
+    }
+    logDebug("Person ${personId} is ${(atDest) ? "" : "not "}at the destination of trip ${tripId}.")
+    return atDest
+}   
     
 boolean atDestinationOfCurrentTrip(personId) {
     def atDest = false
@@ -1668,6 +1669,18 @@ boolean atDestinationOfCurrentTrip(personId) {
     logDebug("Person ${personId} is ${(atDest) ? "" : "not "}at the destination of their current trip.")
     return atDest
 }
+    
+boolean atOriginOfCurrentTrip(personId) {
+    def atOrigin = false
+    if (state.people[personId]?.current?.place?.id && state.people[personId]?.current?.trip?.id) {
+        def tripId = state.people[personId]?.current?.trip?.id
+        if (state.people[personId]?.current?.place?.id == getIdOfPlaceWithName(settings["trip${tripId}Origin"])) {
+            atOrigin = true
+        }
+    } 
+    logDebug("Person ${personId} is ${(atDest) ? "" : "not "} at the origin of their current trip.")
+    return atOrigin
+}
 
 def handleVehicleChange(String personId) {
     // first update state based on impact of change to trip status
@@ -1675,8 +1688,8 @@ def handleVehicleChange(String personId) {
 
     // did vehicle change start a trip?
     state.trips.each { tripId, trip ->
-         if (inTripVehicle(personId, tripId) && areDepartureConditionsMet(tripId) && !isPersonOnTrip(personId, tripId)) {
-             // assume trip just started because (i) got in a vehicle specified for the trip (ii) while departure conditions met; (iii) and trip was not already in progress
+         if (inTripVehicle(personId, tripId) && areDepartureConditionsMet(tripId) && !isPersonOnTrip(personId, tripId) && !atDestinationOfTrip(personId, tripId)) {
+             // assume trip just started because (i) got in a vehicle specified for the trip (ii) while departure conditions met; (iii) trip was not already in progress; and (iv) person is not already at the destination of the trip
              startTripForPerson(personId, tripId)             
          }
     }
@@ -2222,18 +2235,13 @@ String getOrigin(String id) {
     return settings["trip${id}Origin"]
 }
 
-String getDestination(String id) {
-    return settings["trip${id}Destination"]
+String getDestination(String tripId) {
+    return settings["trip${tripId}Destination"]
 }
 
 
 String isPreferredRouteSet(String tripId) {
     return (settings["trip${tripId}PreferredRoute"]) ? true : false
-}
-
-String getDestinationIcon(String tripId) {
-    def destinationName = getDestination(tripId)
-    return getPlaceIcon(destinationName)   
 }
 
 def deleteTrip(nameToDelete) {
@@ -2268,8 +2276,9 @@ def getCircleBackgroundColorSetting() {
     return (circleBackgroundColor) ? circleBackgroundColor : circleBackgroundColorDefault
 }
 
-Integer getTileScaleSetting() {
-    return (tileScale) ? tileScale : tileScaleDefault
+
+def getTextColorSetting() {
+    return (textColor) ? textColor : textColorDefault
 }
                    
 Integer gettrafficDelayThresholdSetting() {
@@ -2333,16 +2342,241 @@ def deleteAllTrackers() {
     }
 }
 
+def fetchTracker() {
+    // Assumes all images are in SVG format for nesting inside another SVG and providing the parent SVG as output at a cloud endpoint
+    
+    def personId = params.personId
+    def trackerType = params.type    // tracker type of 'svg' nests all images inside an svg. tracker type of 'html' does not (outside images handled by calling method)
 
-def getTrackerLocalUrl(String personId) {
-    instantiateToken()
-    return getFullLocalApiServerUrl() + "/multiplace/${personId}?access_token=${state.accessToken}"
+    def circleColor = getCircleBackgroundColorSetting()
+    def txtColor = getTextColorSetting()
+        
+    def placeOfPresenceById = getPlaceOfPresenceById(personId)
+    def placeOfPresenceByName = getPlaceOfPresenceByName(personId)
+
+    def presenceIcon = getPresenceIcon(personId, trackerType)  
+
+    String svg = '<svg viewBox="0 0 120 120" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">'
+    svg += '<style>'
+    svg +=   '.large { font: bold 14px Oswald,sans-serif; fill:' +  txtColor + '; }'
+    svg +=   '.small { font: bold 11px Oswald,sans-serif; fill:' +  txtColor + '; }'
+    svg += '</style>'
+    svg += '<defs>'
+    svg +=    '<mask id="mask1" x="0" y="0" width="100" height="110" >'
+    svg +=         '<rect x="25" y="0" width="80" height="110" style="stroke:none; fill:white" />'
+    svg +=     '</mask>'
+    svg += '</defs>'
+    
+    if (trackerType == 'svg') {
+        svg += '<svg x="20" width="80" height="80" z-index="1">'
+        svg += state.images.people[personId]
+        svg += '</svg>'
+    }
+    
+    if (state.people[personId]?.current.trip.id != null) {
+    // show current trip
+           
+        def tripId = state.people[personId]?.current.trip.id
+        logDebug("Tracker for personId ${personId} with active tripID ${tripId}")
+        def bestRoute = getBestRoute(tripId)
+        def relativeTrafficDelay = bestRoute.trafficDelay - state.trips[tripId].averageTrafficDelay
+           
+        def isPreferred = isPreferredRoute(tripId, bestRoute.summary)
+        def isPreferredRouteSet = isPreferredRouteSet(tripId)
+           
+        def routeAlert = false
+        if (relativeTrafficDelay > gettrafficDelayThresholdSetting()) routeAlert = true
+        if (isPreferredRouteSet && !isPreferred) routeAlert = true
+        
+        def conditionColor = "green"
+        if (routeAlert) conditionColor = "red"
+           
+        svg += '<g mask="url(#mask1)">'
+        svg +=     '<polygon z-index="1" points="0,50 20,64, 0,78 0,68 -20,68 -20,60 0,60" fill="' + conditionColor + '">'
+        svg +=     '<animateTransform attributeName="transform" type="translate" attributeType="XML" calcMode="spline" values="0, 0; 0, 0; 120, 0; 120, 0" keyTimes="0; .2; .8; 1" keySplines=".5,.12,.36,.93;.5,.12,.36,.93;.5,.12,.36,.93" dur="3.5s" repeatCount="indefinite" additive="sum"/>'
+        svg +=     '</polygon>'
+        svg += '</g>'
+
+        svg += '<circle z-index="2" cx="20" cy="65" r="18" stroke-width="2" stroke="black" fill="gray"/>'
+        
+        if (trackerType == 'svg') {
+            svg += '<svg z-index="3" x="0.5" y="44" width="39" height="39">'
+            svg += presenceIcon
+            svg += '</svg>'
+        }
+        
+        svg += '<circle z-index="2" cx="100" cy="65" r="18" stroke-width="2" stroke="black" fill="gray"/>'
+        
+        if (trackerType == 'svg') {
+            svg += '<svg z-index="3" x="80.5" y="44" width="39" height="39">'
+            svg += getDestinationIcon(tripId, trackerType)
+            svg += '</svg>'
+        }
+
+        svg += '<circle z-index="2" cx="100" cy="65" r="18" stroke-width="2" stroke="' + conditionColor + '" fill="none">'
+        svg += '<animate attributeName="stroke-dasharray" values="56.5, 0, 56.5, 0; 0, 113, 0, 0; 0, 113, 0, 0" keyTimes="0; 0.5; 1" dur="3.5s" repeatCount="indefinite" />'
+        svg += '</circle>'
+  
+        svg += '<circle z-index="2" cx="100" cy="65" r="18" stroke-width="2" stroke="' + conditionColor + '" fill="none">'
+        svg += '<animate attributeName="stroke-dasharray" values="0, 56.5, 0, 56.5; 0, 56.5, 0, 56.5; 0, 0, 113, 0" dur="3.5s" keyTimes="0; 0.5; 1" repeatCount="indefinite" />'
+        svg += '</circle>'
+          
+           
+        if (isPersonOnTrip(personId)) {
+            // display ETA if already departed on trip
+
+            def etaUtc = getEtaOfCurrentTrip(personId)
+            def etaDate = new Date(etaUtc)
+               
+            def lateAlert = false
+            def target = settings["trip${tripId}TargetArrivalTime"]
+            if (target) {
+                def targetArrival = toDateTime(target)
+                if (etaDate.after(targetArrival)) {
+                    def secondsLate = getSecondsBetween(targetArrival, etaDate)
+                    def secsLateThreshold = settings["trip${tripId}LateNotificationMins"]*60
+                    if (secondsLate >= secsLateThreshold) lateAlert = true
+                }
+            }
+            svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="60" y="95" class="large" fill="' + ((lateAlert) ? " red" : "black") + '">' + extractTimeFromDate(etaDate) + '</text>'
+        }
+        else {
+            // otherwise display expected duration of trip
+            svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="100" y="45" class="small"  fill="' + ((routeAlert) ? " red" : "black") + '">' + formatTimeMins(bestRoute.duration) + '</text>'
+
+               if (!isPreferredRouteSet || (isPreferredRouteSet && !isPreferred) || (isPreferredRouteSet && isPreferred && getIsPreferredRouteDisplayedSetting())) {
+                   svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="60" y="95" class="small" fill="' + ((routeAlert) ? " red" : "black") + '">' + bestRoute.summary + '</text>'
+                   
+                   
+        // TO DO: show countdown to departure to arrive on time?
+        //    def requiredDeparture = getRequiredDeparture(tripId, duration)
+        //    departureCountDown = getSecondsBetween(new Date(), requiredDeparture)
+        //    departureCountDownStr = formatTime(departureCountDown)
+               }      
+           }
+    }
+     else { 
+         def isPostArrival = isInPostArrivalDisplayWindow(personId)
+         // in post arrival display window for a period of time after arrive at the destination of a trip, as long as the person is still at that destination.
+         if (isPostArrival) {
+             // while in post arrival display window, prioritize display of presence at the trip's destination, even if the person is still in the vehicle. 
+             def destinationName = getDestination(state.people[personId]?.previous.trip.id)
+             def destinationId = getIdOfPlaceWithName(destinationName)
+             presenceIcon = state.images.places[destinationId]
+         }
+         svg += '<circle z-index="2" cx="100" cy="65" r="18" stroke-width="2" stroke="black" fill="' + ((isPostArrival) ? "green" : "gray") + '"/>'
+         
+         if (trackerType == 'svg') {
+             svg += '<svg z-index="3" x="80.5" y="44" width="39" height="39">'
+             svg += presenceIcon
+             svg += '</svg>'
+         }
+         
+            
+          if (isPostArrival) {
+              // show arrival at destination of any previous trip for X minutes according to getPostArrivalDisplayMinsSetting()*60
+              def tripId = state.people[personId]?.previous.trip.id
+              def arrivalUTCTime = state.people[personId]?.previous.trip.arrivalTime
+              def arrivalDateTime = new Date(arrivalUTCTime)
+              def lateAlert = false
+              def target = settings["trip${tripId}TargetArrivalTime"]
+              if (target) {
+                  def targetArrival = toDateTime(target)
+                  if (arrivalDateTime.after(targetArrival)) {
+                      def secondsLate = getSecondsBetween(targetArrival, arrivalDateTime)
+                      def secsLateThreshold = settings["trip${tripId}LateNotificationMins"]*60
+                      if (secondsLate >= secsLateThreshold) lateAlert = true
+                  }
+              }
+             svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="60" y="95" class="large" fill="' + ((lateAlert) ? " red" : "black") + '">' + extractTimeFromDate(arrivalDateTime) + '</text>'
+         }
+         else if (placeOfPresenceById == null && placeOfPresenceByName != null) {
+             svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="60" y="95" class="small" fill="black">' + placeOfPresenceByName + '</text>' 
+         }
+     }
+     svg += '</svg>'
+
+     render contentType: "image/svg+xml", data: svg, status: 200
 }
 
 
-def getTrackerCloudUrl(String personId) {
-    instantiateToken()
-    getFullApiServerUrl() + "/multiplace/${personId}?access_token=${state.accessToken}"
+def getTrackerEndpoint(String personId, trackerType='svg') {
+    return getFullApiServerUrl() + "/multiplace/${personId}/${trackerType}?access_token=${state.accessToken}"
+}
+
+def getPresenceIcon(String personId, trackerType=null) {
+    def presenceIcon = null
+    
+    def placeOfPresenceById = getPlaceOfPresenceById(personId)
+    def vehicleIdPresentIn = getIdOfVehiclePresentIn(personId)
+    
+    // generally, prioritize showing presence in vehicle over presence at place. Except when in post arrival display window, which is handled below
+    if (vehicleIdPresentIn != null) presenceIcon = trackerType == 'svg' ? state.images.vehicles[vehicleIdPresentIn] : getVehicleIconById(vehicleIdPresentIn)
+    else if (placeOfPresenceById != null) presenceIcon = trackerType == 'svg' ? state.images.places[placeOfPresenceById] : getPlaceIconById(placeOfPresenceById)
+    // TO DO: icon if not present anywhere   
+    
+    return presenceIcon
+}
+
+def getDestinationIcon(String tripId, trackerType=null) {
+    def destinationIcon = null
+    def destinationName = getDestination(tripId)
+    def destinationId = getIdOfPlaceWithName(destinationName)
+    if (destinationId != null) destinationIcon = trackerType == 'svg' ? state.images.places[destinationId] : getPlaceIconById(destinationId)
+    return destinationIcon
+}
+
+def updateTracker(String personId) {
+    //  The real update happens when the svg is fetched from the cloud endpoint. This just forces the hub into seeing an "event" in the Tracker device attribute that references the svg at the cloud enpdoint.
+    if (!state.refreshNum) state.refreshNum = 0
+    state.refreshNum++
+        
+    def trackerType = 'svg'
+        
+    def personAvatar = getPersonAvatar(personId)
+    def presenceIcon = getPresenceIcon(personId)
+    def tripId = state.people[personId]?.current.trip.id
+    def destinationIcon = null
+    if (tripId != null) destinationIcon = getDestinationIcon(tripId)
+        
+    if(!isSVG(personAvatar) || !isSVG(presenceIcon) || (destinationIcon != null && !isSVG(destinationIcon))) trackerType = 'html'
+        
+    // TO DO: if trackerType == 'html', reference non-svg images using html
+    trackerType = 'svg'
+    
+    def trackerUrl = getTrackerEndpoint(personId, trackerType) + '&version=' + state.refreshNum
+    
+    String content = ""
+   // content += '<div style="width:100%;position:relative; z-index:1; text-align: center; background: url(' + trackerUrl + ') no-repeat;display: block;">'
+    content += '<div style="width:100%;position:relative; z-index:0; text-align: center; display: block;">'
+    content += '<div style="positive:absolute; width: 100%; height: 100%; z-index:1;text-align: center;display: block;">'
+    content += '<img src="' + trackerUrl + '"/>'
+    content += '</div>'
+    if (trackerType == 'html') {
+        content += '<div style="positive:absolute; width: 80%; height: 80%; left:10; top:-100; margin-top:-100px; z-index:0;text-align: center;display: block;">'
+        content += '<img src="' + personAvatar + '"/>'
+        content += '</div>'
+        if (tripId == null) {
+            content += '<div style="positive:absolute; width: 80px; height: 80px; left:0; top:0; z-index:2;text-align: center;display: block;">'
+            content += '<img  src="' + presenceIcon + '"/>'
+            content += '</div>'
+        }
+        else {
+            content += '<div style="positive:absolute; width: 80px; height: 80px; left:0; top:0; z-index:2;text-align: center;display: block;">'
+            content += '<img src="' + presenceIcon + '"/>'
+            content += '</div>'
+            content += '<div style="positive:absolute; width: 80px; height: 80px; left:0; top:0; z-index:2;text-align: center;display: block;">'
+            content += '<img src="' + destinationIcon + '"/>'
+            content += '</div>'
+        }
+    }  
+    content += '</div>'
+    def tracker = getTracker(personId)
+    if (tracker) {
+        tracker.sendEvent(name: 'tracker', value: content, displayed: true, isStateChange: true)   
+        def placeOfPresenceByName = getPlaceOfPresenceByName(personId)
+        tracker.sendEvent(name: 'presence', value: placeOfPresenceByName)  
+    }
 }
 
 def getInterface(type, txt="") {
