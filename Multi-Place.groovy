@@ -6,21 +6,16 @@
 
  * TO DO: 
     - send push notification or turn on/off switch if bad traffic (update tile with how many minutes in advance need to leave or countdown to departure)
-    - Make fetchTracker null safe (in case use old URL, won't get null pointer exception)
     - built-in icons that come with app, including default icon (so can get the app up and running right away without having to find icons first)
-        - home
-        - work
-        - school
-        - church
         - bed (when integrate Sleep)
-        - unknown (or not home)?
+        - vehicles
+        - people
     - repository for icons, so people can push built icons for sharing
     - README, instructions in app, link to JPG to SVG converter, link to SVG avatar creator, note that SVGs are imported so hit DONE in app to re-import if SVG changed
     - organize, comment code
     - integrate Sleep
     - periodically refresh import of SVG?
      - handle scenario where user clicks "Add Place/Person/Vehicle", fills part of the form out, and then never clicks Submit or Cancel. That adds to the value of lastPerson/Place, etc. and causes problems when app loaded again
-    - enable debugging for 30 mins
     - check display when in pre-trip interval for displaying duration of trip and route
     - check display with various images (e.g., jpgs)
 
@@ -31,7 +26,7 @@
             - don't use cloud endpoint. pointless. use attribute instead.
 
     - License Terms
-        - Permit derivative works for personal use, but not for distribution??
+        - Permit derivative works for personal use, but not for distribution
  */
 import groovy.json.*
 import java.text.SimpleDateFormat
@@ -332,7 +327,7 @@ def clearPersonSettings(String personId) {
     
     app.clearSetting("person${personId}Name")
     app.clearSetting("person${personId}Avatar")
-    app.updateSetting("person${personId}Life360",[type:"device.Life360User",value:[]]) 
+    app.updateSetting("person${personId}Life360",[type:"device",value:[]]) 
     
     if (state.vehicles) {
         for (vehicleId in state.vehicles) { 
@@ -963,7 +958,7 @@ def AdvancedPage() {
             input name: "cacheValidityDuration", type: "number", title: "Duration of Directions Cache (Secs)", required: false, defaultValue: cacheValidityDurationDefault
             paragraph "${app.name} also caches the response from Google Directions for showing the route options available in the app. Set for as long as a configuration session may last."
             input name: "optionsCacheValidityDuration", type: "number", title: "Duration of Options Cache (Secs)", required: false, defaultValue: optionsCacheValidityDurationDefault
-            input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: false
+            input name: "logEnable", type: "bool", title: "Enable debug logging for 30 minutes", defaultValue: false, submitOnChange: true
         }
     }   
 }
@@ -999,12 +994,23 @@ def updated() {
 def initialize() {
     resetAddEditState()
     unsubscribe()
-    subscribeTriggers()
     unschedule()
+    initializeDebugLogging()
+    subscribeTriggers()
     scheduleTimeTriggers()
     initializePresence()
     initializeSVGImages()
     initializeTrackers()
+}
+
+def initializeDebugLogging() {
+    if (logEnable) runIn(1800, disableDebugLogging)
+    
+}
+
+def disableDebugLogging() {
+    logDebug("Disabling Debug Logging")
+    app.updateSetting("logEnable",[value:"false",type:"bool"])
 }
 
 def initializePresence() {
@@ -1069,6 +1075,8 @@ def initializeSVGImages() {
              
         }
     }    
+    
+    state.images.unknown = sanitizeSvg(getPathOfUnknownIcon().toURL().text)
 }
 
 String sanitizeSvg(String svg) {
@@ -2371,6 +2379,8 @@ def fetchTracker() {
     def personId = params.personId
     def trackerType = params.type    // tracker type of 'svg' nests all images inside an svg. tracker type of 'html' does not (outside images handled by calling method)
     
+    if(!state.people.containsKey(personId)) return null
+    
     Integer yOffset = 0
     Integer maskOffset = -45
     Integer yViewportOffset = 0
@@ -2545,6 +2555,7 @@ def getPresenceIcon(String personId, trackerType=null) {
     // generally, prioritize showing presence in vehicle over presence at place. Except when in post arrival display window, which is handled below
     if (vehicleIdPresentIn != null) presenceIcon = trackerType == 'svg' ? state.images.vehicles[vehicleIdPresentIn] : getVehicleIconById(vehicleIdPresentIn)
     else if (placeOfPresenceById != null) presenceIcon = trackerType == 'svg' ? state.images.places[placeOfPresenceById] : getPlaceIconById(placeOfPresenceById) 
+    else presenceIcon = trackerType == 'svg' ? state.images.unknown : getPathOfUnknownIcon()
     
     def isPostArrival = isInPostArrivalDisplayWindow(personId)
     // in post arrival display window for a period of time after arrive at the destination of a trip, as long as the person is still at that destination.
@@ -2965,9 +2976,11 @@ def getPlaceIconsEnum() {
 }
 
 def getPathOfStandardIcon(String name) {
-    def path = getImagePath() + standardPlaceIcons[name]
-    logDebug("Icon path is: ${path}")
-    return path
+    return getImagePath() + standardPlaceIcons[name]
+}
+
+def getPathOfUnknownIcon() {
+    return getImagePath() + unknownIcon
 }
             
 @Field static standardPlaceIcons = [
@@ -2976,3 +2989,5 @@ def getPathOfStandardIcon(String name) {
     'School': '/Places/school.svg',
     'Church': '/Places/church.svg',
 ]
+
+@Field static unknownIcon = '/unknown.svg'
