@@ -1,87 +1,151 @@
-<?xml version="1.0" encoding="iso-8859-1"?>
-<svg version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
-   style="enable-background:new 0 0 512.001 512.001;"
-   viewBox="0 0 512.001 512.001"
-   y="0px"
-   x="0px"
-   showgrid="false"
-   guidetolerance="10"
-   gridtolerance="10"
-   objecttolerance="10"
-   borderopacity="1"
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   inkscape:version="1.0 (4035a4f, 2020-05-01)"
+   height="307.84998"
+   width="323.8869"
+   sodipodi:docname="home.svg"
+   pagecolor="#ffffff"
    bordercolor="#666666"
-   pagecolor="#ffffff">
-
-<g
-   style="fill:#ffffff"
-   id="g57"><g
+   borderopacity="1"
+   objecttolerance="10"
+   gridtolerance="10"
+   guidetolerance="10"
+   showgrid="false"
+   x="0px"
+   y="0px"
+   viewBox="0 0 323.88692 307.84999"
+   id="Capa_1"
+   version="1.1">
+  <metadata
+     id="metadata37">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs35" />
+  <sodipodi:namedview
+     inkscape:current-layer="Capa_1"
+     inkscape:window-maximized="0"
+     inkscape:window-y="23"
+     inkscape:window-x="0"
+     inkscape:cy="152.81516"
+     inkscape:cx="157.58905"
+     inkscape:zoom="1.4355441"
+     showgrid="false"
+     id="namedview33"
+     inkscape:window-height="960"
+     inkscape:window-width="1212"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0"
+     guidetolerance="10"
+     gridtolerance="10"
+     objecttolerance="10"
+     borderopacity="1"
+     bordercolor="#666666"
+     pagecolor="#ffffff" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     id="g57"
+     style="fill:#ffffff">
+    <g
+       transform="matrix(0.63258944,0,0,0.63258944,98.411477,95.166953)"
+       id="g6"
+       style="fill:#ffffff">
+      <g
+         id="g4"
+         style="fill:#ffffff">
+        <path
+           id="path2"
+           d="M 503.402,228.885 273.684,19.567 C 263.601,10.378 248.396,10.379 238.317,19.566 L 8.598,228.886 c -8.077,7.36 -10.745,18.7 -6.799,28.889 3.947,10.189 13.557,16.772 24.484,16.772 h 36.69 v 209.721 c 0,8.315 6.742,15.057 15.057,15.057 h 125.914 c 8.315,0 15.057,-6.741 15.057,-15.057 V 356.932 h 74.002 v 127.337 c 0,8.315 6.742,15.057 15.057,15.057 h 125.908 c 8.315,0 15.057,-6.741 15.057,-15.057 V 274.547 h 36.697 c 10.926,0 20.537,-6.584 24.484,-16.772 3.941,-10.19 1.273,-21.529 -6.804,-28.89 z"
+           style="fill:#ffffff" />
+      </g>
+    </g>
+    <g
+       transform="matrix(0.63258944,0,0,0.63258944,98.411477,95.166953)"
+       id="g12"
+       style="fill:#ffffff">
+      <g
+         id="g10"
+         style="fill:#ffffff">
+        <path
+           id="path8"
+           d="M 445.092,42.73 H 343.973 l 116.176,105.636 v -90.58 c 0,-8.315 -6.741,-15.056 -15.057,-15.056 z"
+           style="fill:#ffffff" />
+      </g>
+    </g>
+  </g>
+  <g
+     transform="translate(-98.411449,-103.18534)"
      style="fill:#ffffff"
-     id="g6"
-     transform="matrix(0.63258944,0,0,0.63258944,98.411477,95.166953)">
-	<g
-   style="fill:#ffffff"
-   id="g4">
-		<path
-   style="fill:#ffffff"
-   d="M 503.402,228.885 273.684,19.567 C 263.601,10.378 248.396,10.379 238.317,19.566 L 8.598,228.886 c -8.077,7.36 -10.745,18.7 -6.799,28.889 3.947,10.189 13.557,16.772 24.484,16.772 h 36.69 v 209.721 c 0,8.315 6.742,15.057 15.057,15.057 h 125.914 c 8.315,0 15.057,-6.741 15.057,-15.057 V 356.932 h 74.002 v 127.337 c 0,8.315 6.742,15.057 15.057,15.057 h 125.908 c 8.315,0 15.057,-6.741 15.057,-15.057 V 274.547 h 36.697 c 10.926,0 20.537,-6.584 24.484,-16.772 3.941,-10.19 1.273,-21.529 -6.804,-28.89 z"
-   id="path2" />
-	</g>
-</g><g
+     id="g14" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
      style="fill:#ffffff"
-     id="g12"
-     transform="matrix(0.63258944,0,0,0.63258944,98.411477,95.166953)">
-	<g
-   style="fill:#ffffff"
-   id="g10">
-		<path
-   style="fill:#ffffff"
-   d="M 445.092,42.73 H 343.973 l 116.176,105.636 v -90.58 c 0,-8.315 -6.741,-15.056 -15.057,-15.056 z"
-   id="path8" />
-	</g>
-</g></g>
-<g
-   id="g14">
-</g>
-<g
-   id="g16">
-</g>
-<g
-   id="g18">
-</g>
-<g
-   id="g20">
-</g>
-<g
-   id="g22">
-</g>
-<g
-   id="g24">
-</g>
-<g
-   id="g26">
-</g>
-<g
-   id="g28">
-</g>
-<g
-   id="g30">
-</g>
-<g
-   id="g32">
-</g>
-<g
-   id="g34">
-</g>
-<g
-   id="g36">
-</g>
-<g
-   id="g38">
-</g>
-<g
-   id="g40">
-</g>
-<g
-   id="g42">
-</g>
+     id="g16" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     style="fill:#ffffff"
+     id="g18" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     style="fill:#ffffff"
+     id="g20" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     style="fill:#ffffff"
+     id="g22" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     style="fill:#ffffff"
+     id="g24" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     style="fill:#ffffff"
+     id="g26" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     style="fill:#ffffff"
+     id="g28" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     style="fill:#ffffff"
+     id="g30" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     style="fill:#ffffff"
+     id="g32" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     style="fill:#ffffff"
+     id="g34" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     style="fill:#ffffff"
+     id="g36" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     style="fill:#ffffff"
+     id="g38" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     style="fill:#ffffff"
+     id="g40" />
+  <g
+     transform="translate(-98.411449,-103.18534)"
+     style="fill:#ffffff"
+     id="g42" />
 </svg>
