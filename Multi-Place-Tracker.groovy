@@ -19,8 +19,9 @@ metadata
 {
     definition(name: "Multi-Place Tracker", namespace: "lnjustin", author: "Justin Leonard", importUrl: "")
     {
-
+        capability "PresenceSensor"
         attribute "tracker", "string"
-        attribute "presence", "string"
+        attribute "place", "string"
+        attribute "vehicle", "string"
     }
 }
