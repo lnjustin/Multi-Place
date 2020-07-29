@@ -71,10 +71,10 @@ definition(
     namespace: "lnjustin",
     author: "Justin Leonard",
     description: "Multi-Place Presence Tracker with Travel Advisor",
-    category: "Green Living",
-    iconUrl: "",
-    iconX2Url: "",
-    iconX3Url: "",
+    category: "Presence",
+    iconUrl: getLogoPath(),
+    iconX2Url: getLogoPath(),
+    iconX3Url: getLogoPath(),
     singleInstance: true,
     oauth: [displayName: "Multi-Place"],
     usesThirdPartyAuthentication: true)
@@ -172,6 +172,7 @@ def mainPage() {
 def TravelAPIPage() {
     dynamicPage(name: "TravelAPIPage") {
         section {
+            header()
             paragraph getInterface("header", " Manage Travel API Access")
             href(name: "GoogleApiLink", title: "Get Google API Key", required: false, url: "https://developers.google.com/maps/documentation/directions/get-api-key", style: "external")
             input name: "api_key", type: "text", title: "Enter Google API key", required: false, submitOnChange: true
@@ -186,6 +187,7 @@ def formatAvatarPreview(String imageUrl) {
 def PeoplePage() {
     dynamicPage(name: "PeoplePage") {
         section() {
+            header()
                 paragraph getInterface("header", " Manage People")
                 if (state.people) {
                     paragraph getInterface("note", "After clicking 'Done' from the app's main page to apply any updates, click a person's avatar for accessing his or her graphical tracker via a cloud endpoint.")
@@ -651,6 +653,7 @@ void appButtonHandler(btn) {
 def VehiclesPage() {
     dynamicPage(name: "VehiclesPage") {
         section {
+            header()
             paragraph getInterface("header", " Manage Vehicles")
             if (state.vehicles) {  
                 paragraph 
@@ -849,6 +852,7 @@ def formatImagePreview(String imageUrl) {
 def PlacesPage() {
     dynamicPage(name: "PlacesPage") {
         section {
+            header()
             paragraph getInterface("header", " Manage Places")
             if (state.places) {                
                 for (id in state.places) {
@@ -1077,6 +1081,7 @@ def deletePlace(String nameToDelete) {
 def RestrictionsPage() {
     dynamicPage(name: "RestrictionsPage") {
         section {
+            header()
             paragraph getInterface("header", " Manage Restrictions")
             paragraph "Do not check travel conditions when..."
             input name: "restrictedModes",type: "mode", title: "The Location Mode is", multiple: true, required: false, width: 6
@@ -1111,6 +1116,7 @@ Boolean isRestricted() {
 def AdvancedPage() {
     dynamicPage(name: "AdvancedPage") {
         section {
+            header()
             paragraph getInterface("header", " Advanced Settings")
             
             paragraph "${app.name} caches the response from Google Directions and considers the cached response valid for the duration selected here. Increasing the validity time reduces the number of API calls. Decreasing the validity time increases responsiveness to traffic fluctuations."
@@ -1125,6 +1131,7 @@ def AdvancedPage() {
 def TrackerPage() {
     dynamicPage(name: "TrackerPage") {
         section {
+            header()
             paragraph getInterface("header", " Tracker Settings")
             input name: "textColor", type: "text", title: "Text color", required: false, defaultValue: textColorDefault
             input name: "circleBackgroundColor", type: "text", title: "Circle background color", required: false, defaultValue: circleBackgroundColorDefault
@@ -2457,6 +2464,7 @@ def TripsPage() {
     dynamicPage(name: "TripsPage") {
         
          section {
+             header()
             paragraph getInterface("header", " Manage Trips")
             if (state.trips) {
                 state.trips.each { tripId, trip ->
