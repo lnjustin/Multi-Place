@@ -5,20 +5,26 @@
     - 
 
  * TO DO: 
-    - send push notification or turn on/off switch if bad traffic (update tile with how many minutes in advance need to leave or countdown to departure)
-    - built-in icons that come with app, including default icon (so can get the app up and running right away without having to find icons first)
-        - bed (when integrate Sleep)
-        - vehicles
-        - people
-    - repository for icons, so people can push built icons for sharing
-    - README, instructions in app, link to JPG to SVG converter, link to SVG avatar creator, note that SVGs are imported so hit DONE in app to re-import if SVG changed
     - organize, comment code
-    - integrate Sleep
-    - periodically refresh import of SVG?
      - handle scenario where user clicks "Add Place/Person/Vehicle", fills part of the form out, and then never clicks Submit or Cancel. That adds to the value of lastPerson/Place, etc. and causes problems when app loaded again
-    - check display when in pre-trip interval for displaying duration of trip and route
-    - check display with various images (e.g., jpgs)
+    - research issue of whether sleep competition scores would be cleared by a nap on Monday, after scores already cleared that morning
+    - link to JPG to SVG converter
+    - link to SVG avatar creator
+    - re-enable disabling of debug logging after 30 minutes
 
+  * Future versions
+    - add snoring indicator
+
+  * TO CHECK:
+    - check display when in pre-trip interval for displaying duration of trip and route
+    - check bad traffic notification
+
+  * TO DOCUMENT
+    - repository for icons, so people can push built icons for sharing
+    - README
+    - instructions in app?
+    - SVG vs. JPG, including JPG size restrictions, SVG margin requirements
+    - note that SVGs are imported so hit DONE in app to re-import if SVG changed
     - Tracker options
         - use only SVG files. Compatible with Sharptools. Avoids long attribute values. Not limited to 1024 characters.
             - use cloud endpoint AND tracker (cloud endpoint requires refresh on the remote end, whereas tracker refreshes automatically)
@@ -27,6 +33,25 @@
 
     - License Terms
         - Permit derivative works for personal use, but not for distribution
+
+
+    Attribution
+    - Gym: Icons made by <a href="https://www.flaticon.com/free-icon/dumbbell_1159873" title="Kiranshastry">Kiranshastry</a> from <a href="https://www.flaticon.com/" title="Flaticon"> www.flaticon.com</a>
+
+    - Work: <div>Icons made by <a href="https://www.flaticon.com/authors/pixel-perfect" title="Pixel perfect">Pixel perfect</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
+
+    - Home: <div>Icons made by <a href="https://www.flaticon.com/authors/freepik" title="Freepik">Freepik</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
+
+    - Church: <div>Icons made by <a href="http://www.freepik.com/" title="Freepik">Freepik</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
+
+    - School: <div>Icons made by <a href="https://www.flaticon.com/authors/freepik" title="Freepik">Freepik</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
+
+    - minivan: <div>Icons made by <a href="http://www.freepik.com/" title="Freepik">Freepik</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
+
+    - car: <div>Icons made by <a href="http://www.freepik.com/" title="Freepik">Freepik</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
+
+    - man & woman: <div>Icons made by <a href="https://www.flaticon.com/authors/vitaly-gorbachev" title="Vitaly Gorbachev">Vitaly Gorbachev</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
+
  */
 import groovy.json.*
 import java.text.SimpleDateFormat
@@ -56,6 +81,7 @@ definition(
 @Field String circleBackgroundColorDefault = "#808080"
 @Field String textColorDefault = "#000000"
 @Field Integer trafficDelayThresholdDefault = 10
+@Field Integer sleepMetricsDisplayMinsDefault = 60
 
 @Field String checkMark = "https://raw.githubusercontent.com/lnjustin/App-Images/master/checkMark.svg"
 @Field String xMark = "https://raw.githubusercontent.com/lnjustin/App-Images/master/xMark.svg"
@@ -63,6 +89,15 @@ definition(
 mappings
 {
     path("/multiplace/:personId/:type") { action: [ GET: "fetchTracker"] }
+    path("/multiplaceSleep/:personId") { action: [ GET: "fetchSleepTracker"] }
+}
+
+def getTrackerEndpoint(String personId, trackerType='svg') {
+    return getFullApiServerUrl() + "/multiplace/${personId}/${trackerType}?access_token=${state.accessToken}"
+}
+
+def getSleepTrackerEndpoint(String personId) {
+    return getFullApiServerUrl() + "/multiplaceSleep/${personId}?access_token=${state.accessToken}"
 }
 
 preferences {
@@ -103,9 +138,12 @@ def mainPage() {
                     href(name: "TripsPage", title: "Manage Trips", description: (state.trips ? getTripEnumList() : "No trips configured"), required: false, page: "TripsPage", image: (state.trips ? checkMark : xMark))
                     href(name: "RestrictionsPage", title: "Manage Mode-Based Restrictions", description: (restrictedModes ? getRestrictedModesDescription() : "No restrictions configured. Restrict Travel Advisor by Hub Mode."), required: false, page: "RestrictionsPage", image: (restrictedModes ? checkMark : xMark))
                     href(name: "TravelAPIPage", title: "Manage Travel API Access", description: "Travel API Access configured.", required: false, page: "TravelAPIPage", image: checkMark)
+                }
+            }
+            section {
+                paragraph getInterface("header", " Manage Settings")
                     href(name: "TrackerPage", title: "Manage Tracker Settings", required: false, page: "TrackerPage")
                     href(name: "AdvancedPage", title: "Manage Advanced Settings", required: false, page: "AdvancedPage")
-                }
 			}
     }
 
@@ -121,38 +159,51 @@ def TravelAPIPage() {
     }
 }
 
+def formatAvatarPreview(String imageUrl) {
+    return '<div><img width="80px" border="0" style="max-width:100px" src="' + imageUrl + '"></div>'   
+}
+
 def PeoplePage() {
     dynamicPage(name: "PeoplePage") {
         section() {
-            
-            paragraph getInterface("header", " Manage People")
-            if (state.people) {
-                def i = 0
-                def peopleDisplay = '<table width=100% border=0>'
-                state.people.each { id, person ->
-                    peopleDisplay += "" + ((i % 4 == 0) ? "<tr>" : "") + "<td align=center><img border=0 style='max-width:100px' src='${getPersonAvatar(id)}'><br><font style='font-size:20px;font-weight: bold'><a href='${getTrackerEndpoint(id)}'>${settings["person${id}Name"]}</a></font></td>" + ((i % 4 == 3) ? "</tr>" : "")
-                    i++
+                paragraph getInterface("header", " Manage People")
+                if (state.people) {
+                    paragraph getInterface("note", "After clicking 'Done' from the app's main page to apply any updates, click a person's avatar for accessing his or her graphical tracker via a cloud endpoint.")
+                    state.people.each { id, person ->
+                        def avatar = getPersonAvatar(id)
+                        def avatarPreview = avatar ? avatar : getPathOfStandardIcon("Dark", "Unknown")
+                        paragraph '<table width="100%"><tr><td align="center"><font style="font-size:20px;font-weight: bold"><a href="' + getTrackerEndpoint(id) + '" target="_blank"  style="color:black;">' + formatAvatarPreview(avatarPreview) + settings["person${id}Name"] + '</a></font></td></tr></table>', width:3
+                    }
                 }
-                peopleDisplay += "</table>"
-                paragraph peopleDisplay
                 paragraph getInterface("line", "")
-            }
-
             if (state.addingPerson) {
-                input name: "person${state.lastPersonID}Name", type: "text", title: "Unique Name", submitOnChange: true, required: true
-                input name: "person${state.lastPersonID}Avatar", type: "text", title: "URL to Avatar Image", submitOnChange: false, required: true
+                paragraph getInterface("subHeader", " Add Person")
+                input name: "person${state.lastPersonID}Name", type: "text", title: "Unique Name", submitOnChange: false, required: true
+                
+                input name: "person${state.lastPersonID}Avatar", type: "enum", options: getIconsEnum("People"), title: "Avatar", submitOnChange: true, multiple: false, required: true, width: 4
+                def avatar = settings["person${state.lastPersonID}Avatar"]
+                if (avatar != null) {
+                    avatarPath = avatar == "Custom" ? settings["person${state.lastPersonID}AvatarCustom"] : getPathOfStandardIcon(avatar, "People")
+                    avatarPath = avatarPath != null ? avatarPath : getPathOfStandardIcon("Dark", "Unknown")
+                    paragraph formatAvatarPreview(avatarPath), width: 2
+                }
+                if (settings["person${state.lastPersonID}Avatar"] == "Custom") {
+                    input name: "person${state.lastPersonID}AvatarCustom", type: "text", title: "URL to Custom Avatar", submitOnChange: true, required: true
+                }
+                
                 input name: "person${state.lastPersonID}Life360", type: "device.Life360User", title: "Life360 Device", submitOnChange: false, multiple: false, required: false
                 paragraph getInterface("note", "If the names of Places in ${app.name} are the same as those in Life360, this Person's presence in ${app.name} will follow his/her presence in Life360.")
-                
+                input name: "person${state.lastPersonID}SleepSensor", type: "device.WithingsSleepSensor", title: "Withings Sleep Sensor", submitOnChange: false, multiple: false, required: false
+                paragraph getInterface("subHeader", " Presence Sensors for Person")
                 if (state.vehicles) {
                     for (vehicleId in state.vehicles) {
-                        input name: "vehicle${vehicleId}Person${state.lastPersonID}Sensor", type: "capability.presenceSensor", title: "${settings["vehicle${vehicleId}Name"]} Presence Sensor for this person", submitOnChange: true, multiple: false, required: false, width: 4
+                        input name: "vehicle${vehicleId}Person${state.lastPersonID}Sensor", type: "capability.presenceSensor", title: settings["vehicle${vehicleId}Name"] + " Presence Sensor", description: "Presence Sensor for this person's presence in the " + settings["vehicle${vehicleId}Name"] + " vehicle", submitOnChange: true, multiple: false, required: false
                     }
                 }
                 
                 if (state.places) {
                     for (placeId in state.places) {
-                        input name: "place${placeId}Person${state.lastPersonID}Sensor", type: "capability.presenceSensor", title: "${settings["place${placeId}Name"]} Presence Sensor for this person", submitOnChange: true, multiple: false, required: false, width: 4
+                        input name: "place${placeId}Person${state.lastPersonID}Sensor", type: "capability.presenceSensor", title: "${settings["place${placeId}Name"]} Presence Sensor", description: "Presence Sensor for this person's presence at " + settings["place${placeId}Name"], submitOnChange: true, multiple: false, required: false
                     }
                 }
 
@@ -160,11 +211,13 @@ def PeoplePage() {
                 input name: "cancelAddPerson", type: "button", title: "Cancel", width: 3
             }
             else if (state.deletingPerson) {
-                input name: "personToDelete", type: "enum", title: "Delete Person:", options: getPeopleEnumList(), multiple: false, submitOnChange: true
+                paragraph getInterface("subHeader", " Delete Person")
+                input name: "personToDelete", type: "enum", title: "Person to Delete:", options: getPeopleEnumList(), multiple: false, submitOnChange: true
                 if (personToDelete) input name: "submitDeletePerson", type: "button", title: "Confirm Delete", width: 3
                 input name: "cancelDeletePerson", type: "button", title: "Cancel", width: 3
             }
             else if (state.editingPerson) {
+                paragraph getInterface("subHeader", " Edit Person")
                 input name: "personToEdit", type: "enum", title: "Edit Person:", options: getPeopleEnumList(), multiple: false, submitOnChange: true
                 if (personToEdit) {
                     def id = null
@@ -181,25 +234,36 @@ def PeoplePage() {
                         state.editedPersonName = settings["person${id}Name"]
                     }
                     input name: "person${id}Name", type: "text", title: "Unique Name", submitOnChange: true, required: true
-                    input name: "person${id}Avatar", type: "text", title: "URL to Avatar Image", submitOnChange: true, required: true
+
+                    input name: "person${id}Avatar", type: "enum", options: getIconsEnum("People"), title: "Avatar", submitOnChange: true, multiple: false, required: true, width: 4
+                    def avatar = settings["person${id}Avatar"]
+                    if (avatar != null) {
+                        avatarPath = avatar == "Custom" ? settings["person${id}AvatarCustom"] : getPathOfStandardIcon(avatar, "People")
+                        avatarPath = avatarPath != null ? avatarPath : getPathOfStandardIcon("Dark", "Unknown")
+                        paragraph formatAvatarPreview(avatarPath), width: 2
+                    }
+                    if (settings["person${id}Avatar"] == "Custom") {
+                        input name: "person${id}AvatarCustom", type: "text", title: "URL to Custom Avatar", submitOnChange: true, required: true
+                    }
                     input name: "person${id}Life360", type: "device.Life360User", title: "Life360 Device", submitOnChange: true, multiple: false, required: false
-                    
+                    input name: "person${id}SleepSensor", type: "device.WithingsSleepSensor", title: "Withings Sleep Sensor", submitOnChange: false, multiple: false, required: false
+                paragraph getInterface("subHeader", " Presence Sensors for Person")
                     if (state.vehicles) {
                         for (vehicleId in state.vehicles) {
-                           input name: "vehicle${vehicleId}Person${id}Sensor", type: "capability.presenceSensor", title: "${settings["vehicle${vehicleId}Name"]} Presence Sensor for this person", submitOnChange: true, multiple: false, required: false, width: 4
+                            input name: "vehicle${vehicleId}Person${id}Sensor", type: "capability.presenceSensor", title: settings["vehicle${vehicleId}Name"] + " Presence Sensor", description: "Presence Sensor for this person's presence in the " + settings["vehicle${vehicleId}Name"] + " vehicle", submitOnChange: true, multiple: false, required: false
                         }
                     }
                 
                     if (state.places) {
                         for (placeId in state.places) {
-                            input name: "place${placeId}Person${id}Sensor", type: "capability.presenceSensor", title: "${settings["place${placeId}Name"]} Presence Sensor for this person", submitOnChange: true, multiple: false, required: false, width: 4
+                            input name: "place${placeId}Person${id}Sensor", type: "capability.presenceSensor", title: "${settings["place${placeId}Name"]} Presence Sensor", description: "Presence Sensor for this person's presence at " + settings["place${placeId}Name"], submitOnChange: true, multiple: false, required: false
                         }
                     }
                 }
                 input name: "submitEditPerson", type: "button", title: "Done", width: 3
-             //   input name: "cancelEditPerson", type: "button", title: "Cancel", width: 3
             }            
-            else {               
+            else {     
+
                 input name: "addPerson", type: "button", title: "Add Person", width: 3                
                 if (state.people) input name: "editPerson", type: "button", title: "Edit Person", width: 3
                 app.clearSetting("personToEdit")
@@ -256,9 +320,47 @@ def addPerson(String id) {
     def currentMap = [place: currentPlaceMap, vehicle: currentVehicleMap, trip: currentTripMap]
     def previousMap = [place: previousPlaceMap, vehicle: previousVehicleMap, trip: previousTripMap]
     def life360Map = [address: null, atTime: null, isDriving: null]
-    def personMap = [current: currentMap, previous: previousMap, life360: life360Map, places: null, vehicles: null]
+    def sleepMap = [presence: null, presenceAtTime: null, score: null, quality: null, sleepDataAtTime: null, winner: null, weekWinCount: null, weekWinner: null, monthWinCount: null, monthWinner: null]
+    def personMap = [current: currentMap, previous: previousMap, life360: life360Map, places: null, vehicles: null, sleep: sleepMap]
         // so use like state.people.persondId.current.place.name
     state.people[id] = personMap
+}
+
+def getSleepData(String personId) {
+    return state.people[personId]?.sleep
+}
+
+def isWithinSleepDisplayWindow(String personId) {
+    def inWindow = false
+    def sleepLastUpdate = state.people[personId]?.sleep.sleepDataAtTime
+    if (sleepLastUpdate) {
+        def secsPassed = getSecondsSince(sleepLastUpdate)
+        if (secsPassed <= getSleepMetricsDisplayMinsSetting()*60) inWindow = true
+    }
+    logDebug("Sleep display window ${inWindow ? "is valid" : "has passed"} with secsPassed = ${secsPassed}")
+    return inWindow
+}
+
+def isInBed(String personId) {
+    def isInBed = false
+    if (state.people[personId]?.sleep.presence == "present") isInBed = true
+    return isInBed
+}
+
+def hasSleepSensor(String personId) {
+    def hasSensor = false
+    if (settings["person${id}SleepSensor"]) hasSensor = true
+    return hasSensor
+}
+
+def haveMultipleSleepSensors() {
+    def haveMultiple = false
+    def sensorCount = 0
+    state.people.each { personId, person ->
+        if (hasSleepSensor(personId)) sensorCount++
+    }
+    if (sensorCount >= 2) haveMultiple = true
+    return haveMultiple
 }
 
 def getPlaceOfPresenceById(String personId) {
@@ -268,6 +370,14 @@ def getPlaceOfPresenceById(String personId) {
 
 def getPlaceOfPresenceByName(String personId) {
     return state.people[personId].current.place.name
+}
+
+def getNameOfVehiclePresentIn(String personId) {
+    def vehicleName = ""
+    if (state.people[personId].current.vehicle.id) {
+        vehicleName = getNameOfVehicleWithId(state.people[personId].current.vehicle.id)
+    }
+    return vehicleName
 }
 
 def getIdOfVehiclePresentIn(String personId) {
@@ -302,7 +412,10 @@ String getNameOfPersonWithId(String personId) {
 }
 
 String getPersonAvatar(String personId) {
-    return settings["person${personId}Avatar"]
+    def avatar = null
+    if (settings["person${personId}Avatar"] == "Custom") avatar = settings["person${personId}AvatarCustom"]
+    else if (settings["person${personId}Avatar"] != null) avatar = getPathOfStandardIcon(settings["person${personId}Avatar"], "People")
+    return avatar
 }
 
 
@@ -327,7 +440,9 @@ def clearPersonSettings(String personId) {
     
     app.clearSetting("person${personId}Name")
     app.clearSetting("person${personId}Avatar")
-    app.updateSetting("person${personId}Life360",[type:"device",value:[]]) 
+    app.clearSetting("person${personId}AvatarCustom")
+    app.updateSetting("person${personId}Life360",[type:"device",value:null]) 
+    app.updateSetting("person${personId}SleepSensor",[type:"device",value:null]) 
     
     if (state.vehicles) {
         for (vehicleId in state.vehicles) { 
@@ -391,6 +506,7 @@ void appButtonHandler(btn) {
       case "submitEditPerson":
          state.editingPerson = false
          state.editPersonSubmitted = true
+         state.editedPersonId = null
          break
       case "cancelEditPerson":
          state.editingPerson = false
@@ -424,6 +540,7 @@ void appButtonHandler(btn) {
          break
       case "submitEditVehicle":
          state.editingVehicle = false
+         state.editedVehicleId = null
          break
       case "cancelEditVehicle":
          state.editingVehicle = false
@@ -457,6 +574,7 @@ void appButtonHandler(btn) {
          break
       case "submitEditPlace":
          state.editingPlace = false
+         state.editedPlaceId = null
          break
       case "cancelEditPlace":
          state.editingPlace = false
@@ -490,6 +608,7 @@ void appButtonHandler(btn) {
          break
       case "submitEditTrip":
          state.editingTrip = false
+         state.editedTripId = null
          break
       case "cancelEditTrip":
          state.editingTrip = false
@@ -514,28 +633,33 @@ def VehiclesPage() {
         section {
             paragraph getInterface("header", " Manage Vehicles")
             if (state.vehicles) {  
-                def i = 0
-                def vehicleDisplay = '<table width=100% border=0 style="float:right;">'
+                paragraph 
                 for (id in state.vehicles) {
-                    vehicleDisplay += "" + ((i % 4 == 0) ? "<tr>" : "") + "<td align=center><img border=0 style='max-width:100px' src='${getVehicleIconById(id)}'><br><font style='font-size:20px;font-weight: bold'>${settings["vehicle${id}Name"]}</font></td>" + ((i % 4 == 3) ? "</tr>" : "")
-                    i++
+                    paragraph '<table width="100%" border="0" style="float:right;"><tr><td align="center">' + formatImagePreview(getVehicleIconById(id)) + '<font style="font-size:20px;font-weight: bold">' + settings["vehicle${id}Name"] + '</font></td></tr></table>', width: 3
                 }
-                vehicleDisplay += "</table>"
-                paragraph vehicleDisplay
-                paragraph getInterface("line", "")
             }
-
+            paragraph getInterface("line", "")
             if (state.addingVehicle) {
                 input name: "vehicle${state.lastVehicleID}Name", type: "text", title: "Unique Name", submitOnChange: false, required: true
-                input name: "vehicle${state.lastVehicleID}Icon", type: "text", title: "URL to Vehicle Icon", submitOnChange: false, required: true
+
+                input name: "vehicle${state.lastVehicleID}Icon", type: "enum", options: getIconsEnum("Vehicles"), title: "Vehicle Icon", submitOnChange: true, multiple: false, required: true, width: 5
+                def vehicleIcon = settings["vehicle${state.lastVehicleID}Icon"]
+                if (vehicleIcon != null) {
+                    vehiclePath = vehicleIcon == "Custom" ? settings["vehicle${state.lastVehicleID}IconCustom"] : getPathOfStandardIcon(vehicleIcon, "Vehicles")
+                    paragraph formatImagePreview(vehiclePath), width: 2
+                }
+                if (settings["vehicle${state.lastVehicleID}Icon"] == "Custom") {
+                    input name: "vehicle${state.lastVehicleID}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
+                }
+                
                 if (state.people) {
                     state.people.each { personId, person ->
                         def personDisplay = "<table border=0 margin=0><tr>"
                         personDisplay+= "<td align=center><img border=0 style='max-width:100px' src='${getPersonAvatar(personId)}'>"
                         personDisplay += "<br><font style='font-size:20px;font-weight: bold'>${settings["person${personId}Name"]}</font></td>"
                         personDisplay += "</tr></table>"
-                        paragraph personDisplay
-                        input name: "vehicle${state.lastVehicleID}Person${personId}Sensor", type: "capability.presenceSensor", title: "Vehicle Presence Sensor for ${settings["person${personId}Name"]}", submitOnChange: false, multiple: false, required: false, width: 4
+                      //  paragraph personDisplay
+                        input name: "vehicle${state.lastVehicleID}Person${personId}Sensor", type: "capability.presenceSensor", title: "${settings["person${personId}Name"]} Presence Sensor", description: "Presence Sensor for ${settings["person${personId}Name"]}'s presence in vehicle", submitOnChange: false, multiple: false, required: false, width: 4
                     }                        
                 }
                 
@@ -564,15 +688,25 @@ def VehiclesPage() {
                     }
                     
                     input name: "vehicle${vehicleId}Name", type: "text", title: "Unique Name", submitOnChange: true, required: true
-                    input name: "vehicle${vehicleId}Icon", type: "text", title: "URL to Vehicle Icon", submitOnChange: true, required: true
+                    
+                    input name: "vehicle${vehicleId}Icon", type: "enum", options: getIconsEnum("Vehicles"), title: "Vehicle Icon", submitOnChange: true, multiple: false, required: true, width: 5
+                    def vehicleIcon = settings["vehicle${vehicleId}Icon"]
+                    if (vehicleIcon != null) {
+                        vehiclePath = vehicleIcon == "Custom" ? settings["vehicle${vehicleId}IconCustom"] : getPathOfStandardIcon(vehicleIcon, "Vehicles")
+                        paragraph formatImagePreview(vehiclePath), width: 2
+                    }
+                    if (settings["vehicle${vehicleId}Icon"] == "Custom") {
+                        input name: "vehicle${vehicleId}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
+                    }
+                    
                     if (state.people) {
                         state.people.each { personId, person ->
                             def personDisplay = "<table border=0 margin=0><tr>"
                             personDisplay+= "<td align=center><img border=0 style='max-width:100px' src='${getPersonAvatar(personId)}'>"
                             personDisplay += "<br><font style='font-size:20px;font-weight: bold'>${settings["person${personId}Name"]}</font></td>"
                             personDisplay += "</tr></table>"
-                            paragraph personDisplay
-                            input name: "vehicle${vehicleId}Person${personId}Sensor", type: "capability.presenceSensor", title: "Vehicle Presence Sensor for ${settings["person${personId}Name"]}", submitOnChange: true, multiple: false, required: false, width: 4
+                          //  paragraph personDisplay
+                            input name: "vehicle${vehicleId}Person${personId}Sensor", type: "capability.presenceSensor", title: "${settings["person${personId}Name"]} Presence Sensor", description: "Presence Sensor for ${settings["person${personId}Name"]}'s presence in vehicle", submitOnChange: false, multiple: false, required: false, width: 4
                         }    
                         
                     }
@@ -608,6 +742,7 @@ def clearVehicleSettings(String vehicleId) {
     
     app.clearSetting("vehicle${vehicleId}Name")
     app.clearSetting("vehicle${vehicleId}Icon")
+    app.clearSetting("vehicle${vehicleId}IconCustom")
     if (state.people) {
         state.people.each { personId, person ->
             app.updateSetting("vehicle${vehicleId}Person${personId}Sensor",[type:"capability",value:[]])
@@ -651,11 +786,14 @@ def getVehiclesDescription() {
 
 String getVehicleIcon(String name) {
     def id = getIdOfVehicleWithName(name)
-    return settings["vehicle${id}Icon"]
+    return getVehicleIconById(id)
 }
 
 String getVehicleIconById(String vehicleId) {
-    return settings["vehicle${vehicleId}Icon"]
+    def vehicleIcon = null
+    if (settings["vehicle${vehicleId}Icon"] == "Custom") vehicleIcon = settings["vehicle${vehicleId}IconCustom"]
+    else if (settings["vehicle${vehicleId}Icon"] != null) vehicleIcon = getPathOfStandardIcon(settings["vehicle${vehicleId}Icon"], "Vehicles")
+    return vehicleIcon
 }
 
 def addVehicle(String id) {
@@ -693,29 +831,26 @@ def PlacesPage() {
         section {
             paragraph getInterface("header", " Manage Places")
             if (state.places) {                
-                def i = 0
-                def placesDisplay = '<table width=100% border=0 style="float:right;">'
                 for (id in state.places) {
-                    placesDisplay += "" + ((i % 4 == 0) ? "<tr>" : "") + "<td align=center>" + formatImagePreview(getPlaceIconById(id)) + "<font style='font-size:20px;font-weight: bold'>${settings["place${id}Name"]}</font></td>" + ((i % 4 == 3) ? "</tr>" : "")
-                    i++
+                    paragraph '<table width=100% border=0 style="float:right;"><tr><td align=center>' + formatImagePreview(getPlaceIconById(id)) + '<font style="font-size:20px;font-weight: bold">' + settings["place${id}Name"] + '</font></td></tr></table>', width: 3
                 }
-                placesDisplay += "</table>"
-                paragraph placesDisplay
-                paragraph getInterface("line", "")
             }
-
+            paragraph getInterface("line", "")
             if (state.addingPlace) {
                 paragraph getInterface("subHeader", "Add New Place")
                 input name: "place${state.lastPlaceID}Name", type: "text", title: "Unique Name", submitOnChange: false, required: true
                 paragraph getInterface("note", "Name Places in ${app.name} the the same as those in any associated Life360 account, in order for presence in ${app.name} to follow presence in Life360.")
-                input name: "place${state.lastPlaceID}Icon", type: "enum", options: getPlaceIconsEnum(), title: "Place Icon", submitOnChange: true, multiple: false, required: true, width: 5
+                                
+                input name: "place${state.lastPlaceID}Icon", type: "enum", options: getIconsEnum("Places"), title: "Place Icon", submitOnChange: true, multiple: false, required: true, width: 5
+                def placeIcon = settings["place${state.lastPlaceID}Icon"]
+                if (placeIcon != null) {
+                    def iconPath = placeIcon == "Custom" ? settings["place${state.lastPlaceID}IconCustom"] : getPathOfStandardIcon(settings["place${state.lastPlaceID}Icon"], "Places")
+                    paragraph formatImagePreview(iconPath), width: 2
+                }
                 if (settings["place${state.lastPlaceID}Icon"] == "Custom") {
                     input name: "place${state.lastPlaceID}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                 }
-                else if (settings["place${state.lastPlaceID}Icon"] != null) {
-                    paragraph formatImagePreview(getPathOfStandardIcon(settings["place${state.lastPlaceID}Icon"]))
-                }
-                
+                                
                 input name: "place${state.lastPlaceID}Address", type: "text", title: "Address", submitOnChange: false, required: false, description: "*Address Required for Travel Advisor"
                 if (state.people) {
                         state.people.each { personId, person ->
@@ -723,8 +858,8 @@ def PlacesPage() {
                             personDisplay+= "<td align=center><img border=0 style='max-width:100px' src='${getPersonAvatar(personId)}'>"
                             personDisplay += "<br><font style='font-size:20px;font-weight: bold'>${settings["person${personId}Name"]}</font></td>"
                             personDisplay += "</tr></table>"
-                            paragraph personDisplay
-                            input name: "place${state.lastPlaceID}Person${personId}Sensor", type: "capability.presenceSensor", title: "Place Presence Sensor for ${settings["person${personId}Name"]}", submitOnChange: false, multiple: false, required: false, width: 4
+                         //  paragraph personDisplay
+                            input name: "place${state.lastPlaceID}Person${personId}Sensor", type: "capability.presenceSensor", title: "${settings["person${personId}Name"]} Presence Sensor", description: "Presence Sensor for ${settings["person${personId}Name"]}'s presence at place",  submitOnChange: false, multiple: false, required: false, width: 4
                         }                       
                 }
                 paragraph "Select garage door(s), contact sensor(s), and/or switch(es) that change when someone is about to depart. When this place is the origin of a trip, the changing of any of these devices during a time window for departure on the trip will trigger a proactive check of travel conditions, to advise you of the best route to take even before actual departure."
@@ -759,13 +894,17 @@ def PlacesPage() {
                     }
                     
                     input name: "place${placeId}Name", type: "text", title: "Unique Name", submitOnChange: true, required: true
-                    input name: "place${placeId}Icon", type: "enum", options: getPlaceIconsEnum(), title: "Place Icon", submitOnChange: true, multiple: false, required: true, width: 5
+                    
+                    input name: "place${placeId}Icon", type: "enum", options: getIconsEnum("Places"), title: "Place Icon", submitOnChange: true, multiple: false, required: true, width: 5
+                    def placeIcon = settings["place${placeId}Icon"]
+                    if (placeIcon != null) {
+                        def iconPath = placeIcon == "Custom" ? settings["place${placeId}IconCustom"] : getPathOfStandardIcon(settings["place${placeId}Icon"], "Places")
+                       paragraph formatImagePreview(iconPath), width: 2
+                    }
                     if (settings["place${placeId}Icon"] == "Custom") {
                         input name: "place${placeId}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                     }
-                    else if (settings["place${placeId}Icon"] != null) {
-                        paragraph formatImagePreview(getPathOfStandardIcon(settings["place${placeId}Icon"]))
-                    }
+                    
                     input name: "place${placeId}Address", type: "text", title: "Address", submitOnChange: true, required: false, description: "*Address Required for Travel Advisor"
                     if (state.people) {
                         state.people.each { personId, person ->
@@ -773,8 +912,8 @@ def PlacesPage() {
                             personDisplay+= "<td align=center><img border=0 style='max-width:100px' src='${getPersonAvatar(personId)}'>"
                             personDisplay += "<br><font style='font-size:20px;font-weight: bold'>${settings["person${personId}Name"]}</font></td>"
                             personDisplay += "</tr></table>"
-                            paragraph personDisplay
-                            input name: "place${placeId}Person${personId}Sensor", type: "capability.presenceSensor", title: "Place Presence Sensor for ${settings["person${personId}Name"]}", submitOnChange: true, multiple: false, required: false, width: 4
+                           // paragraph personDisplay
+                            input name: "place${placeID}Person${personId}Sensor", type: "capability.presenceSensor", title: "${settings["person${personId}Name"]} Presence Sensor", description: "Presence Sensor for ${settings["person${personId}Name"]}'s presence at place",  submitOnChange: false, multiple: false, required: false, width: 4
                         }   
                         
                     }
@@ -870,13 +1009,13 @@ String getPlaceAddressById(String id) {
 
 String getPlaceIcon(String name) {
     def id = getIdOfPlaceWithName(name)
-    return settings["place${id}Icon"]
+    return getPlaceIconById(id)
 }
 
 String getPlaceIconById(String placeId) {
     def placeIcon = null
     if (settings["place${placeId}Icon"] == "Custom") placeIcon = settings["place${placeId}IconCustom"]
-    else if (settings["place${placeId}Icon"] != null) placeIcon = getPathOfStandardIcon(settings["place${placeId}Icon"])
+    else if (settings["place${placeId}Icon"] != null) placeIcon = getPathOfStandardIcon(settings["place${placeId}Icon"], "Places")
     return placeIcon
 }
 
@@ -975,6 +1114,7 @@ def TrackerPage() {
             input name: "fetchInterval", type: "number", title: "Interval (mins) for Checking Travel Conditions", required: false, defaultValue: fetchIntervalDefault
             input name: "tripPreCheckMins", type: "number", title: "Number of Minutes Before Earliest Departure Time to Check Travel Conditions", required: false, defaultValue: tripPreCheckMinsDefault
             input name: "postArrivalDisplayMins", type: "number", title: "Number of Minutes to Display Trip After Arrival", required: false, defaultValue: postArrivalDisplayMinsDefault
+            input name: "sleepMetricsDisplayMins", type: "number", title: "Number of Minutes to Display New Sleep Score", required: false, defaultValue: sleepMetricsDisplayMinsDefault
         }
     }   
 }
@@ -999,6 +1139,7 @@ def initialize() {
     subscribeTriggers()
     scheduleTimeTriggers()
     initializePresence()
+    initializeSleep()
     initializeSVGImages()
     initializeTrackers()
 }
@@ -1010,7 +1151,29 @@ def initializeDebugLogging() {
 
 def disableDebugLogging() {
     logDebug("Disabling Debug Logging")
-    app.updateSetting("logEnable",[value:"false",type:"bool"])
+ //   app.updateSetting("logEnable",[value:"false",type:"bool"])
+}
+
+def initializeSleep() {
+    if (state.people) {
+        state.people.each { personId, person ->
+            def sleepDevice = settings["person${personId}SleepSensor"]
+            if (sleepDevice) {
+                if (!state.people[personId]?.sleep.presence) {
+                    state.people[personId]?.sleep.presence = sleepDevice.currentValue("presence")
+                    state.people[personId]?.sleep.presenceAtTime = new Date().getTime()
+                }
+                if (!state.people[personId]?.sleep.score) {
+                    state.people[personId]?.sleep.score = sleepDevice.currentValue("sleepScore")
+                  //  state.people[personId]?.sleep.sleepDataAtTime = new Date().getTime()
+                }
+                if (!state.people[personId]?.sleep.quality) {
+                    state.people[personId]?.sleep.quality = sleepDevice.currentValue("sleepQuality")
+                  //  state.people[personId]?.sleep.sleepDataAtTime = new Date().getTime()
+                }
+            }
+        }
+    }
 }
 
 def initializePresence() {
@@ -1076,7 +1239,16 @@ def initializeSVGImages() {
         }
     }    
     
-    state.images.unknown = sanitizeSvg(getPathOfUnknownIcon().toURL().text)
+    state.images.sleep = [:]
+    standardSleepIcons.each { name, subPath ->
+        state.images.sleep[name] = sanitizeSvg(getPathOfStandardIcon(name,"Sleep").toURL().text)
+    }
+    
+    state.images.unknown = [:]
+    standardUnknownIcons.each { name, subPath ->
+        state.images.unknown[name] = sanitizeSvg(getPathOfStandardIcon(name,"Unknown").toURL().text)
+    }
+    
 }
 
 String sanitizeSvg(String svg) {
@@ -1106,21 +1278,6 @@ String sanitizeSvg(String svg) {
     
     return cleanSvg
 }
-
-/*
-import groovy.util.slurpersupport.GPathResult
-
-private static String convertSvgToString(GPathResult node) {
-    try {
-        Object builder = Class.forName("groovy.xml.StreamingMarkupBuilder").newInstance()
-        InvokerHelper.setProperty(builder, "encoding", "UTF-8")
-        Writable w = (Writable) InvokerHelper.invokeMethod(builder, "bindNode", node)
-        return w.toString()
-    } catch (Exception e) {
-        return "Couldn't convert node to string because: " + e.getMessage()
-    }
-}
-*/
 
 def scheduleTimeTriggers() {
     if (state.trips) {
@@ -1158,11 +1315,154 @@ def subscribePeople() {
                 subscribe(settings["person${id}Life360"], "address", life360AddressHandler)                 
                 state.people[id].life360.isDriving = settings["person${id}Life360"].currentValue("isDriving")
                 subscribe(settings["person${id}Life360"], "isDriving", life360DrivingHandler)
-            }           
+            }    
+            if (settings["person${id}SleepSensor"]) {
+                subscribe(settings["person${id}SleepSensor"], "sleepScore", sleepScoreHandler)
+                subscribe(settings["person${id}SleepSensor"], "presence", bedPresenceHandler)
+            }
         }
     }
 }
 
+def sleepScoreHandler() {
+    state.people?.each { personId, person ->
+        if (isSleepDeviceForPerson(personId, evt.getDevice())) {
+            state.people[personId]?.sleep.score = evt.value
+            state.people[personId]?.sleep.sleepDataAtTime = evt.getDate().getTime()
+            settings["person${personId}SleepSensor"].currentValue("sleepQuality")  // grab sleep quality on assumption that updated at the same time
+            if (haveMultipleSleepSensors()) updateSleepCompetition()  
+            updateTracker(personId)
+            schedule(getSleepMetricsDisplayMinsSetting(), clearSleepDisplay, [data: [personId: personId], overwrite: false])
+        }
+    }
+}
+
+def clearSleepDisplay(data) {
+    def personId = data.personId
+    updateTracker(personId)
+}
+
+def isSleepDeviceForPerson(String personId, device) {
+     if (settings["person${personId}SleepSensor"] && settings["person${personId}SleepSensor"].getDeviceNetworkId() == device.getDeviceNetworkId()) return true
+    return false
+}
+
+def bedPresenceHandler(evt) {
+    state.people?.each { personId, person ->
+        if (isSleepDeviceForPerson(personId, evt.getDevice())) {
+            state.people[personId]?.sleep.presence = evt.value
+            state.people[personId]?.sleep.presenceAtTime = evt.getDate().getTime()
+            updateTracker(personId)
+        }
+    }
+}
+
+def updateSleepCompetition() {
+    // check if all sleep sensors have been updated today before competing 
+    def allScoresUpdated = true
+    def winner = [score: 0, personList: []] // list for ties
+    state.people?.each { personId, person ->
+        if (hasSleepSensor(personId)) {
+            def sleepDataAtTime = state.people[personId]?.sleep.sleepDataAtTime
+            if (sleepDataAtTime) {
+                def midnight = new Date().clearTime()
+                def midnightUtc = today.getTime()
+                if (sleepDataAtTime < midnightUtc) {    // sleep data not updated today
+                    allScoresUpdated = false
+                }
+                else {
+                    if (state.people[personId]?.sleep.score > winner.score) {
+                        winner = [score: state.people[personId]?.sleep.score, personList: [personId]]
+                    }
+                    else if (state.people[personId]?.sleep.score == winner.score) {
+                        winner.personList.add(personId)
+                    }
+                }
+            }
+            else allScoresUpdated = false    // no sleep data at all yet
+        }
+    }
+    
+    if (allScoresUpdated) {
+        
+        Calendar cal = Calendar.getInstance()
+        cal.setTimeZone(location.timeZone)
+        cal.setTime(new Date())
+        def dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+        def dayOfMonth = cal.get(Calendar.DAY_OF_MONTH)
+        def lastDayOfMonth = cal.getActualMaximum(GregorianCalendar.DAY_OF_MONTH)
+        def isWeekStart = dayOfWeek == Calendar.MONDAY ? true : false
+        def isWeekEnd = dayOfWeek == Calendar.SUNDAY ? true : false
+        def isMonthStart = dayOfMonth == 1 ? true : false
+        def isMonthEnd = dayOfMonth == lastDayOfMonth ? true : false
+        if (isWeekStart) clearWeeklyWinCount()
+        if (isMonthStart) clearMonthlyWinCount()
+    
+        state.people?.each { personId, person ->
+            if (winner.personList.contains(personId)) {
+                state.people[personId]?.sleep.winner = true
+                state.people[personId]?.sleep.weekWinCount++ 
+                state.people[personId]?.sleep.monthWinCount++ 
+            }
+            else state.people[personId]?.sleep.winner = false
+            updateTracker(personId)
+        }
+        
+        if (isWeekEnd) {
+            def weekWinner = [winCount: 0, personList: []] // list for ties
+            state.people?.each { personId, person ->
+                if (state.people[personId]?.sleep.weekWinCount > weekWinner.winCount) {
+                        weekWinner = [winCount: state.people[personId]?.sleep.weekWinCount, personList: [personId]]
+                }
+                else if (state.people[personId]?.sleep.weekWinCount == weekWinner.winCount) {
+                    weekWinner.personList.add(personId)
+                }
+           }
+            
+            state.people?.each { personId, person ->
+                if (weekWinner.personList.contains(personId)) {
+                    state.people[personId]?.sleep.weekWinner = true
+                }
+                else state.people[personId]?.sleep.weekWinner = false
+                updateTracker(personId)
+            }
+        }
+        
+        if (isMonthEnd) {
+            def monthWinner = [winCount: 0, personList: []] // list for ties
+            state.people?.each { personId, person ->
+                if (state.people[personId]?.sleep.monthWinCount > monthWinner.winCount) {
+                        monthWinner = [winCount: state.people[personId]?.sleep.monthWinCount, personList: [personId]]
+                }
+                else if (state.people[personId]?.sleep.monthWinCount == monthWinner.winCount) {
+                    monthWinner.personList.add(personId)
+                }
+           }
+            
+            state.people?.each { personId, person ->
+                if (monthWinner.personList.contains(personId)) {
+                    state.people[personId]?.sleep.monthWinner = true
+                }
+                else state.people[personId]?.sleep.monthWinner = false
+                updateTracker(personId)
+            }
+        }        
+    }
+}
+
+def clearWeeklyWinCount() {
+    state.people?.each { personId, person ->
+        state.people[personId]?.sleep.weekWinCount = 0
+        state.people[personId]?.sleep.weekWinner = false
+    }
+}
+
+def clearMonthlyWinCount() {
+    state.people?.each { personId, person ->
+        state.people[personId]?.sleep.monthWinCount = 0
+        state.people[personId]?.sleep.monthWinner = false
+    }
+}
 
 def subscribeVehicles() {
     if (state.vehicles && state.people) {  
@@ -1294,10 +1594,30 @@ def updateTripPreCheck(data) {
          logDebug("Updating Trip Pre-Check for trip ${tripId}")   
         updateTrackersForTripPeople(tripId)
         pushLateNotification(tripId)
+        badTrafficNotification(tripId)
         runIn(getFetchIntervalSetting()*60, "updateTripPreCheck", [data: [tripId: tripId]])
     }
     else {
         logDebug("Either departure window ended or trip started. No more updates for now.")
+    }
+}
+
+def badTrafficNotification(String tripId) {
+    if (isBadTraffciNotificationConfigured(tripId)) {
+        def bestRoute = getBestRoute(tripId)
+        def relativeTrafficDelay = bestRoute?.trafficDelay - state.trips[tripId]?.averageTrafficDelay
+
+        if (relativeTrafficDelay > gettrafficDelayThresholdSetting()) {
+            def trafficDelayMins = Math.round(relativeTrafficDelay / 60)
+            def trafficDelayStr = (trafficDelayMins == 1) ? trafficDelayMins.toString + " min" : trafficDelayMins.toString + " mins"
+            def etaDate = getETADate(bestRoute.duration)
+            def eta = extractTimeFromDate(etaDate)
+            settings["trip${tripId}BadTrafficPushDevices"].deviceNotification("Bad traffic on your trip from ${settings["trip${tripId}Origin"]} to ${settings["trip${tripId}Destination"]}. Allow ${trafficDelayStr} more than usual. Best route as of now is ${bestRoute.summary}, for ${eta} arrival.")
+            
+            settings["trip${tripId}BadTrafficSwitches"].each { theSwitch ->
+                theSwitch.on()
+            }
+        }
     }
 }
 
@@ -1435,7 +1755,7 @@ def pushLateNotification(String tripId) {
             def etaStr = extractTimeFromDate(eta)
             def targetArrival = toDateTime(settings["trip${tripId}TargetArrivalTime"])
             if (eta.after(targetArrival)) {
-                def secondsLate = getSecondsBetween(targetArrival, eta)
+                def secondsLate = getSecondsBetweenDates(targetArrival, eta)
                 def secsLateThreshold = settings["trip${tripId}LateNotificationMins"]*60
                 if (secondsLate >= secsLateThreshold) {
                     for (personName in settings["trip${tripId}People"]) {
@@ -2108,16 +2428,11 @@ def TripsPage() {
          section {
             paragraph getInterface("header", " Manage Trips")
             if (state.trips) {
-                def i = 0
-                def tripsDisplay = '<table align=left border=0 margin=0 width=100%>'
                 state.trips.each { tripId, trip ->
-                    tripsDisplay += "" + ((i % 2 == 0) ? "<tr>" : "") + "<td align=center style:'width=50%'><img style='max-width:100px' border=0  src='${getPlaceIcon(settings["trip${tripId}Origin"])}'><img style='max-width:100px' border=0 src='${getPlaceIcon(settings["trip${tripId}Destination"])}'><br><font style='font-size:20px;font-weight: bold'>${getNameOfTripWithId(tripId)}</font></td>" + ((i % 4 == 1) ? "</tr>" : "")
-                    i++
+                    paragraph '<table align=left border=0 margin=0 width=100%><tr><td align=center style:"width=50%;">' + formatImagePreview(getOriginIcon(tripId)) + '</td><td align=center style:"width=50%;">' + formatImagePreview(getDestinationIcon(tripId)) + '</td></tr><tr><td align=center style:"width=100%;" colspan=2><font style="font-size:20px;font-weight: bold">' + getNameOfTripWithId(tripId) + '</font></td></tr></table>', width: 3
                 }
-                tripsDisplay += "</table>"
-                paragraph tripsDisplay
             }
-
+            paragraph getInterface("line", "")
             if (state.addingTrip) {
                 
                 tripInput(state.lastTripID.toString())
@@ -2203,7 +2518,9 @@ def tripInput(String tripId) {
                 }
 
                 paragraph getInterface("subHeader", " Configure Departure Automations")
-               input name: "trip${tripId}DeparturePushDevices", type: "capability.notification", title: "Send Push Notification with recommended route to these devices upon departure", required: false, multiple: true, submitOnChange: true  
+               input name: "trip${tripId}BadTrafficPushDevices", type: "capability.notification", title: "Send Push Notification to these devices if there is bad traffic.", required: false, multiple: true, submitOnChange: true 
+                input name: "trip${tripId}BadTrafficSwitches", type: "capability.switch", title: "Turn on these switches if there is bad traffic.", required: false, multiple: true, submitOnChange: true, width: 4 
+                input name: "trip${tripId}DeparturePushDevices", type: "capability.notification", title: "Send Push Notification with recommended route to these devices upon departure", required: false, multiple: true, submitOnChange: true  
                input name: "trip${tripId}OnlyPushIfNonPreferred", type: "bool", title: "But Only if Non-Preferred Route Recommended?", required: false, submitOnChange: false 
                 
                 input name: "trip${tripId}DepartureSwitches", type: "capability.switch", title: "Upon departure, turn these Switches", required: false, multiple: true, submitOnChange: true, width: 4  
@@ -2308,6 +2625,10 @@ def getCircleBackgroundColorSetting() {
     return (circleBackgroundColor) ? circleBackgroundColor : circleBackgroundColorDefault
 }
 
+def getSleepMetricsDisplayMinsSetting() {
+    return (sleepMetricsDisplayMins) ? sleepMetricsDisplayMins : sleepMetricsDisplayMinsDefault
+}
+
 
 def getTextColorSetting() {
     return (textColor) ? textColor : textColorDefault
@@ -2374,8 +2695,42 @@ def deleteAllTrackers() {
     }
 }
 
+def getSleepDataSvg(String personId) {
+    def svg = ""
+    def sleepData = getSleepData(personId)
+    if (sleepData?.score) {
+        def sleepColor = "black"
+        if (sleepData?.quality == "Restless") sleepColor = "#ee6c5c"  // red
+        else if (sleepData?.quality == "Average") sleepColor = "#f2b14d"       // orange
+        else if (sleepData?.quality == "Restful") sleepColor = "#73d49f"   // green
+        svg += '<svg width="20" height="38" z-index="1" x="5" y="-7" viewBox="0 0 20 20" overflow="visible" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">'
+        svg += '<style>'
+        svg += '.moon {fill:' + sleepColor + '}'
+        svg += '</style>'
+        svg += '<g class="moon">'
+        svg += state.images.sleep["Moon"]
+        svg += '</g>'
+        svg += '<text x="14" y="9" alignment-baseline="middle" style="font:bold 11px Oswald,sans-serif;" text-anchor="middle" fill="' + getTextColorSetting() + '">' + sleepData?.score + '</text>'
+        if (sleepData.winner) {
+            svg += '<svg x="0.5" y="14" viewBox="0 0 20 20">'
+            svg += state.images.sleep["Ribbon"]
+            svg += '</svg>'
+        }
+        svg += '</svg>'
+   }   
+    logDebug("svg is ${groovy.xml.XmlUtil.escapeXml(svg)}")
+    return svg
+}
+
+def fetchSleepTracker() {
+    logDebug("Fetching Sleep Tracker")
+    def personId = params.personId
+    def svg = getSleepDataSvg(personId)
+    render contentType: "image/svg+xml", data: svg, status: 200
+}
+
 def fetchTracker() {
-    
+    logDebug("Fetching Tracker")
     def personId = params.personId
     def trackerType = params.type    // tracker type of 'svg' nests all images inside an svg. tracker type of 'html' does not (outside images handled by calling method)
     
@@ -2413,6 +2768,21 @@ def fetchTracker() {
         svg += '<svg x="20" width="80" height="80" z-index="1">'
         svg += state.images.people[personId]
         svg += '</svg>'
+        
+        if (isWithinSleepDisplayWindow(personId)) {
+            svg += getSleepDataSvg(personId) 
+        }
+        def sleepData = getSleepData(personId)
+        if (sleepData.monthWinner) {            // display monthly trophy the whole day, irrespective of whether only in sleep display window
+            svg += '<svg x="90" y="-12" width="25" height="50" z-index="1">'
+            svg += state.images.sleep["Month Trophy"]
+            svg += '</svg>'
+        }
+        else if (sleepData.weekWinner) {            // display weekly trophy the whole day, irrespective of whether only in sleep display window
+            svg += '<svg x="90" y="-12" width="25" height="50" z-index="1">'
+            svg += state.images.sleep["Week Trophy"]
+            svg += '</svg>'
+        }
     }
     
     if (state.people[personId]?.current.trip.id != null) {
@@ -2434,12 +2804,12 @@ def fetchTracker() {
         if (routeAlert) conditionColor = "red"
            
         svg += '<g mask="url(#mask1)" ' + (trackerType =="svg" ? '' : 'transform="translate(0,' + maskOffset+ ')"') + '>'
-        svg +=     '<polygon z-index="1" points="0,50 20,64, 0,78 0,68 -20,68 -20,60 0,60" fill="' + conditionColor + '">'
+        svg +=     '<polygon z-index="1" points="0,50 20,64, 0,78 0,68 8,64 0,60" fill="' + conditionColor + '">'
         svg +=     '<animateTransform attributeName="transform" type="translate" attributeType="XML" calcMode="spline" values="0, 0; 0, 0; 120, 0; 120, 0" keyTimes="0; .2; .8; 1" keySplines=".5,.12,.36,.93;.5,.12,.36,.93;.5,.12,.36,.93" dur="3.5s" repeatCount="indefinite" additive="sum"/>'
         svg +=     '</polygon>'
         svg += '</g>'
 
-        svg += '<circle z-index="2" cx="20" cy="' + (20+yOffset) + '" r="18" stroke-width="2" stroke="black" fill="gray"/>'
+        svg += '<circle z-index="2" cx="20" cy="' + (20+yOffset) + '" r="18" stroke-width="1" stroke="black" fill="gray"/>'
         
         if (trackerType == 'svg') {
             svg += '<svg z-index="3" x="7.5" y="51" width="25" height="25">'
@@ -2447,7 +2817,7 @@ def fetchTracker() {
             svg += '</svg>'
         }
         
-        svg += '<circle z-index="2" cx="100" cy="' + (20+yOffset) + '" r="18" stroke-width="2" stroke="black" fill="gray"/>'
+        svg += '<circle z-index="2" cx="100" cy="' + (20+yOffset) + '" r="18" stroke-width="1" stroke="black" fill="gray"/>'
         
         if (trackerType == 'svg') {
             svg += '<svg z-index="3" x="87.5" y="51" width="25" height="25">'
@@ -2455,11 +2825,11 @@ def fetchTracker() {
             svg += '</svg>'
         }
 
-        svg += '<circle z-index="2" cx="100" cy="' + (20+yOffset) + '" r="18" stroke-width="2" stroke="' + conditionColor + '" fill="none">'
+        svg += '<circle z-index="2" cx="100" cy="' + (20+yOffset) + '" r="18" stroke-width="1" stroke="' + conditionColor + '" fill="none">'
         svg += '<animate attributeName="stroke-dasharray" values="56.5, 0, 56.5, 0; 0, 113, 0, 0; 0, 113, 0, 0" keyTimes="0; 0.5; 1" dur="3.5s" repeatCount="indefinite" />'
         svg += '</circle>'
   
-        svg += '<circle z-index="2" cx="100" cy="' + (20+yOffset) + '" r="18" stroke-width="2" stroke="' + conditionColor + '" fill="none">'
+        svg += '<circle z-index="2" cx="100" cy="' + (20+yOffset) + '" r="18" stroke-width="1" stroke="' + conditionColor + '" fill="none">'
         svg += '<animate attributeName="stroke-dasharray" values="0, 56.5, 0, 56.5; 0, 56.5, 0, 56.5; 0, 0, 113, 0" dur="3.5s" keyTimes="0; 0.5; 1" repeatCount="indefinite" />'
         svg += '</circle>'
           
@@ -2475,7 +2845,7 @@ def fetchTracker() {
             if (target) {
                 def targetArrival = toDateTime(target)
                 if (etaDate.after(targetArrival)) {
-                    def secondsLate = getSecondsBetween(targetArrival, etaDate)
+                    def secondsLate = getSecondsBetweenDates(targetArrival, etaDate)
                     def secsLateThreshold = settings["trip${tripId}LateNotificationMins"]*60
                     if (secondsLate >= secsLateThreshold) lateAlert = true
                 }
@@ -2488,12 +2858,7 @@ def fetchTracker() {
 
                if (!isPreferredRouteSet || (isPreferredRouteSet && !isPreferred) || (isPreferredRouteSet && isPreferred && getIsPreferredRouteDisplayedSetting())) {
                    svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="60" y="' + (50+yOffset) + '" class="small" fill="' + ((routeAlert) ? " red" : "black") + '">' + bestRoute.summary + '</text>'
-                   
-                   
-        // TO DO: show countdown to departure to arrive on time?
-        //    def requiredDeparture = getRequiredDeparture(tripId, duration)
-        //    departureCountDown = getSecondsBetween(new Date(), requiredDeparture)
-        //    departureCountDownStr = formatTime(departureCountDown)
+
                }      
            }
     }
@@ -2506,7 +2871,7 @@ def fetchTracker() {
              def destinationId = getIdOfPlaceWithName(destinationName)
              presenceIcon = state.images.places[destinationId]
          }
-         svg += '<circle z-index="2" cx="100" cy="' + (20+yOffset) + '" r="18" stroke-width="2" stroke="black" fill="' + ((isPostArrival) ? "green" : "gray") + '"/>'
+         svg += '<circle z-index="2" cx="100" cy="' + (20+yOffset) + '" r="18" stroke-width="1" stroke="black" fill="' + ((isPostArrival) ? "green" : "gray") + '"/>'
          
          if (trackerType == 'svg') {
              svg += '<svg z-index="3" x="87.5" y="51" width="25" height="25">'
@@ -2525,7 +2890,7 @@ def fetchTracker() {
               if (target) {
                   def targetArrival = toDateTime(target)
                   if (arrivalDateTime.after(targetArrival)) {
-                      def secondsLate = getSecondsBetween(targetArrival, arrivalDateTime)
+                      def secondsLate = getSecondsBetweenDates(targetArrival, arrivalDateTime)
                       def secsLateThreshold = settings["trip${tripId}LateNotificationMins"]*60
                       if (secondsLate >= secsLateThreshold) lateAlert = true
                   }
@@ -2541,21 +2906,18 @@ def fetchTracker() {
      render contentType: "image/svg+xml", data: svg, status: 200
 }
 
-
-def getTrackerEndpoint(String personId, trackerType='svg') {
-    return getFullApiServerUrl() + "/multiplace/${personId}/${trackerType}?access_token=${state.accessToken}"
-}
-
 def getPresenceIcon(String personId, trackerType=null) {
     def presenceIcon = null
     
     def placeOfPresenceById = getPlaceOfPresenceById(personId)
     def vehicleIdPresentIn = getIdOfVehiclePresentIn(personId)
+    def isInBed = isInBed(personId)
     
-    // generally, prioritize showing presence in vehicle over presence at place. Except when in post arrival display window, which is handled below
-    if (vehicleIdPresentIn != null) presenceIcon = trackerType == 'svg' ? state.images.vehicles[vehicleIdPresentIn] : getVehicleIconById(vehicleIdPresentIn)
+    // generally, prioritize showing presence in bed, then vehicle, then place. Except when in post arrival display window, which is handled below
+    if (isInBed) presenceIcon = trackerType == 'svg' ? state.images.sleep["Bed"] : getPathOfStandardIcon("Bed", "Sleep")
+    else if (vehicleIdPresentIn != null) presenceIcon = trackerType == 'svg' ? state.images.vehicles[vehicleIdPresentIn] : getVehicleIconById(vehicleIdPresentIn)
     else if (placeOfPresenceById != null) presenceIcon = trackerType == 'svg' ? state.images.places[placeOfPresenceById] : getPlaceIconById(placeOfPresenceById) 
-    else presenceIcon = trackerType == 'svg' ? state.images.unknown : getPathOfUnknownIcon()
+    else presenceIcon = trackerType == 'svg' ? state.images.unknown["Light"] : getPathOfStandardIcon("Light", "Unknown")
     
     def isPostArrival = isInPostArrivalDisplayWindow(personId)
     // in post arrival display window for a period of time after arrive at the destination of a trip, as long as the person is still at that destination.
@@ -2575,6 +2937,15 @@ def getDestinationIcon(String tripId, trackerType=null) {
     def destinationId = getIdOfPlaceWithName(destinationName)
     if (destinationId != null) destinationIcon = trackerType == 'svg' ? state.images.places[destinationId] : getPlaceIconById(destinationId)
     return destinationIcon
+}
+
+
+def getOriginIcon(String tripId, trackerType=null) {
+    def originIcon = null
+    def originName = getOrigin(tripId)
+    def originId = getIdOfPlaceWithName(originName)
+    if (originId != null) originIcon = trackerType == 'svg' ? state.images.places[originId] : getPlaceIconById(originId)
+    return originIcon
 }
 
 def updateTracker(String personId) {
@@ -2604,39 +2975,96 @@ def updateTracker(String personId) {
         content += '</div>'
     }
     else if (trackerType == 'html') {
+        logDebug("Outputing HTML version of tracker")
         content += '<style>'
         content += 'body { margin: 0; }'
         content += '.tracker { width: 100%; padding-top: 100%; position:relative; display:block;'
         content +=            'background-repeat: no-repeat;'
 
+        def isInSleepWindow = isWithinSleepDisplayWindow(personId)
+        def sleepData = getSleepData(personId)
+        def isWeekWinner = sleepData.weekWinner
+        def isMonthWinner = sleepData.monthWinner
+        def isWinner = isWeekSleepWinner || isMonthSleepWinner
+
+        // DEBUG CODE
+      //  isInSleepWindow = true
+      //  isWinner = true
+      //  isWeekWinner = true
+      //  isMonthWinner = true
+        
+        def trophy = ""
+        if (isMonthWinner) trophy = "Month Trophy"
+        else if (isWeekWinner) trophy = "Week Trophy"
+        
         if (state.people[personId]?.current.trip.id != null) {
-            content +=            'background-position: bottom 24% right 7.5%, bottom 24% left 8%, bottom 0% right 50%, center;'
-            content +=            'background-size: 21%, 21%, 100% auto, 65%;'
+            content +=            'background-position: bottom 24% right 7.5%, bottom 24% left 8%, bottom 0% right 50%, center'
+            if (isInSleepWindow && isWinner) content += ', top 18% left 4%, top 25% right 8%;'
+            else if (isInSleepWindow) content += ', top 18% left 4%;'
+            else if (isWinner) content += ', top 25% right 8%;'
+            else content +=        ';'
+            content +=            'background-size: 21%, 21%, 100% auto, 65%'
+            if (isInSleepWindow && isWinner) content += ',20%,20%;'
+            else if (isInSleepWindow) content += ',20%;'
+            else if (isWinner) content += ',20%;'
+            else content +=        ';'
             content +=            'background-image: url("' + destinationIcon + '"),'
             content +=            'url("' + presenceIcon + '"),'
-            content +=            'url("' + trackerUrl + '"),'
-            content +=            'url("' + personAvatar + '");'
-            content += '}'
+            content +=            'url("' + trackerUrl + '"),' 
+            content +=            'url("' + personAvatar + '")' + (isInSleepWindow ? "" : ";")
+            if (isInSleepWindow && isWinner) {
+                content += ',url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '")'
+                content += ', url("' + getPathOfStandardIcon(trophy,"Sleep") + '");'
+            }
+            else if (isInSleepWindow) {
+                content += ',url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '");'
+            }
+            else if (isWinner) {
+                content += ', url("' + getPathOfStandardIcon(trophy,"Sleep") + '");'  
+            }
+            else content +=        ';'
         }
         else {
-            content +=            'background-position: bottom 24% right 7.5%, bottom 0% right 50%, center;'
-            content +=            'background-size: 21%, 100% auto, 65%;'
+            content +=            'background-position: bottom 24% right 7.5%, bottom 0% right 50%, center'
+            if (isInSleepWindow && isWinner) content += ', top 18% left 4%, top 25% right 8%;'
+            else if (isInSleepWindow) content += ', top 18% left 4%;'
+            else if (isWinner) content += ', top 25% right 8%;'
+            else content +=        ';'
+            content +=            'background-size: 21%, 100% auto, 65%'
+            if (isInSleepWindow && isWinner) content += ',20%,20%;'
+            else if (isInSleepWindow) content += ',20%;'
+            else if (isWinner) content += ',22%;'
+            else content +=        ';'
             content +=            'background-image:'
             content +=            'url("' + presenceIcon + '"),'
             content +=            'url("' + trackerUrl + '"),'
-            content +=            'url("' + personAvatar + '");'
-            content += '}'            
+            content +=            'url("' + personAvatar + '")' + (isInSleepWindow ? "" : ";")      
+            if (isInSleepWindow && isWinner) {
+                content += ',url("' + getSleepTrackerEndpoint(personId) + '&version='
+                content += state.refreshNum + '"), url("' + getPathOfStandardIcon(trophy,"Sleep") + '");'
+            }
+            else if (isInSleepWindow) {
+                content += ',url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '");'
+            }
+            else if (isWinner) {
+                content += ', url("' + getPathOfStandardIcon(trophy,"Sleep") + '");'  
+            }
+            else content +=        ';'
         }
+        content += '}'
         content += '</style>'
         content += '<div class="tracker">'
         content += '</div>'
     }
-   // logDebug("html is ${groovy.xml.XmlUtil.escapeXml(content)}")
+    logDebug("html is ${groovy.xml.XmlUtil.escapeXml(content)}")
     def tracker = getTracker(personId)
     if (tracker) {
         tracker.sendEvent(name: 'tracker', value: content, displayed: true, isStateChange: true)   
         def placeOfPresenceByName = getPlaceOfPresenceByName(personId)
-        tracker.sendEvent(name: 'presence', value: placeOfPresenceByName)  
+        tracker.sendEvent(name: 'place', value: placeOfPresenceByName)  
+        def vehicleOfPresenceByName = getNameOfVehiclePresentIn(personId)
+        def vehicle = vehicleOfPresenceByName ? vehicleOfPresenceByName : "None"
+        tracker.sendEvent(name: 'vehicle', value: vehicle) 
     }
 }
 
@@ -2912,12 +3340,12 @@ def isCacheValid(String tripId) {
 }
 
 // ### Utility Methods ###
-def getSecondsBetween(Date startDate, Date endDate) {
+def getSecondsBetweenDates(Date startDate, Date endDate) {
     try {
         def difference = endDate.getTime() - startDate.getTime()
         return Math.round(difference/1000)
     } catch (ex) {
-        log.error "getSecondsBetween Exception: ${ex}"
+        log.error "getSecondsBetweenDates Exception: ${ex}"
         return 1000
     }
 }
@@ -2927,7 +3355,7 @@ def getSecondsBetweenUTC(startDateUTC, endDateUTC) {
         def difference = endDateUTC - startDateUTC
         return Math.round(difference/1000)
     } catch (ex) {
-        log.error "getSecondsBetween Exception: ${ex}"
+        log.error "getSecondsBetweenUTC Exception: ${ex}"
         return 1000
     }
 }
@@ -2937,7 +3365,7 @@ def getSecondsSince(utcDate) {
         def difference = new Date().getTime() - utcDate
         return Math.round(difference/1000)
     } catch (ex) {
-        log.error "getSecondsBetween Exception: ${ex}"
+        log.error "getSecondsSince Exception: ${ex}"
         return 1000
     }
 }
@@ -2966,28 +3394,59 @@ def getImagePath() {
     return "https://raw.githubusercontent.com/lnjustin/App-Images/master/Multi-Place"
 }
 
-def getPlaceIconsEnum() {
+def getIconsEnum(String type) {
     def list = []
-    standardPlaceIcons.each { name, path ->
+    def icons = null
+    if (type == "Places") icons = standardPlacesIcons
+    else if (type == "Vehicles") icons = standardVehiclesIcons
+    else if (type == "People") icons = standardPeopleIcons
+    icons.each { name, path ->
        list.add(name)
     }
     list.add("Custom")
     return list                  
 }
 
-def getPathOfStandardIcon(String name) {
-    return getImagePath() + standardPlaceIcons[name]
-}
 
-def getPathOfUnknownIcon() {
-    return getImagePath() + unknownIcon
+def getPathOfStandardIcon(String name, type) {
+    def iconPath = null
+    if (type == "Places") iconPath = standardPlacesIcons[name]
+    else if (type == "Vehicles") iconPath = standardVehiclesIcons[name]
+    else if (type == "People") iconPath = standardPeopleIcons[name]
+    else if (type == "Sleep") iconPath = standardSleepIcons[name]
+    else if (type == "Unknown") iconPath = standardUnknownIcons[name]
+    
+    return getImagePath() + iconPath
 }
             
-@Field static standardPlaceIcons = [
+@Field static standardPlacesIcons = [
 	'Home': '/Places/home.svg',
 	'Work': '/Places/work.svg',
     'School': '/Places/school.svg',
     'Church': '/Places/church.svg',
+    'Gym': '/Places/gym.svg',
 ]
 
-@Field static unknownIcon = '/unknown.svg'
+            
+@Field static standardVehiclesIcons = [
+	'Car': '/Vehicles/car.svg',
+	'Minivan': '/Vehicles/minivan.svg',
+]
+      
+@Field static standardPeopleIcons = [
+	'Man': '/People/man.svg',
+	'Woman': '/People/woman.svg',
+]
+
+@Field static standardSleepIcons = [
+   'Bed': '/Sleep/bed.svg',
+    'Moon': '/Sleep/moon.svg',
+    'Ribbon': '/Sleep/ribbon.svg',
+    'Week Trophy': '/Sleep/weekTrophy.svg',
+    'Month Trophy': '/Sleep/monthTrophy.svg',
+]
+
+@Field static standardUnknownIcons = [
+    'Light': '/Unknown/questionLight.svg',
+    'Dark': '/Unknown/questionDark.svg',
+    ]
