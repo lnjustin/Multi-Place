@@ -7,10 +7,14 @@
  * TO DO: 
     - organize, comment code
      - handle scenario where user clicks "Add Place/Person/Vehicle", fills part of the form out, and then never clicks Submit or Cancel. That adds to the value of lastPerson/Place, etc. and causes problems when app loaded again
-    - research issue of whether sleep competition scores would be cleared by a nap on Monday, after scores already cleared that morning
+    - research issue of whether sleep competition scores would be cleared by a nap on Monday or the start of the month, after scores already cleared that morning
     - issue with delay when hit button
     - resize moon icon
     - test if pre-departure and departure right - test case: be present at the destination before pre-departure window starts, then get in the car - is that the right behavior?
+    - what to do if get in car before departure window?
+    - way to cancel trip, so revert back to normal dashboard?
+        - maybe a command on the tracker device to cancel trip?
+        - or other commands??
     - make submit button more prominent, so don't accidentally click Next page
     - link to JPG to SVG converter
     - link to SVG avatar creator
@@ -116,10 +120,22 @@ preferences {
      page name: "AdvancedPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
 }
 
+String logo() {
+    return '<img width="10%" style="display: block;margin-left: auto;margin-right: auto;margin-top:0px;" border="0" src="' + getLogoPath() + '">'
+}
+
+String MP() {
+    return '<img width="20%" style="display: block;margin-left: auto;margin-right: auto; margin-top: 3px;" border="0" src="' + getMPPath() + '">'
+}
+
+def header() {
+    paragraph logo() + MP()
+}
+
 def mainPage() {
     dynamicPage(name: "mainPage") {
             section {
-                
+                header()
                 if (state.people) {
                     href(name: "PeoplePage", title: "Manage People", description: getPeopleDescription(), required: false, page: "PeoplePage", image: checkMark)
                     href(name: "VehiclesPage", title: "Manage Vehicles", description: getVehiclesDescription(), required: false, page: "VehiclesPage", image: checkMark)
@@ -1711,14 +1727,18 @@ def endDepartureWindowHandler(data) {
         def personId = getIdOfPersonWithName(personName)
         if (state.people[personId]?.current.trip.id == tripId && state.people[personId]?.current.trip.departureTime == null) {
          // person never left on the trip, so cancel trip
-            state.people[personId]?.current.trip.id = null
-            state.people[personId]?.current.trip.departureTime = null      
-            state.people[personId]?.current.trip.recommendedRoute = null 
-            state.people[personId]?.current.trip.eta = null 
-            state.people[personId]?.current.trip.hasPushedLateNotice = false
-            updateTracker(personId)
+        cancelCurrentTripForPerson(personId) 
         }
     }
+}
+
+def cancelCurrentTripForPerson(String personId) {
+    state.people[personId]?.current.trip.id = null
+    state.people[personId]?.current.trip.departureTime = null      
+    state.people[personId]?.current.trip.recommendedRoute = null 
+    state.people[personId]?.current.trip.eta = null 
+    state.people[personId]?.current.trip.hasPushedLateNotice = false  
+    updateTracker(personId)
 }
 
 def performPreDepartureActionsForTrip(String tripId) {
@@ -3403,6 +3423,19 @@ def extractTimeFromDate(Date date) {
 
 def getImagePath() {
     return "https://raw.githubusercontent.com/lnjustin/App-Images/master/Multi-Place"
+}
+
+String getLogoPath() {
+    return getImagePath() + "/logo.png"
+}
+
+String getLogoWithWordsPath() {
+    return getImagePath() + "/MPlogo.png"
+}
+
+
+String getMPPath() {
+    return getImagePath() + "/MP.png"
 }
 
 def getIconsEnum(String type) {
