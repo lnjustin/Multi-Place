@@ -8,6 +8,10 @@
     - organize, comment code
      - handle scenario where user clicks "Add Place/Person/Vehicle", fills part of the form out, and then never clicks Submit or Cancel. That adds to the value of lastPerson/Place, etc. and causes problems when app loaded again
     - research issue of whether sleep competition scores would be cleared by a nap on Monday, after scores already cleared that morning
+    - issue with delay when hit button
+    - resize moon icon
+    - decide if should start pre-trip check if already at the destinatoin - probably not
+    - make submit button more prominent, so don't accidentally click Next page
     - link to JPG to SVG converter
     - link to SVG avatar creator
     - re-enable disabling of debug logging after 30 minutes
@@ -1602,6 +1606,11 @@ def updateTripPreCheck(data) {
     }
 }
 
+def isBadTraffciNotificationConfigured(String tripId) {
+    if (settings["trip${tripId}BadTrafficPushDevices"]) return true
+    else return false
+}
+
 def badTrafficNotification(String tripId) {
     if (isBadTraffciNotificationConfigured(tripId)) {
         def bestRoute = getBestRoute(tripId)
@@ -1981,7 +1990,8 @@ Boolean inDepartureWindow(String tripId, Boolean isTripPreCheckIncluded=false) {
 }
 
 Date getPreCheckTime(String tripId) {
-    return adjustTimeBySecs(settings["trip${tripId}EarliestDepartureTime"], getTripPreCheckMinsSetting()*60*-1)
+    Integer preCheckSecs = getTripPreCheckMinsSetting()*60*-1
+    return adjustTimeBySecs(settings["trip${tripId}EarliestDepartureTime"], preCheckSecs)
 }
                 
                 
@@ -2485,7 +2495,7 @@ def tripInput(String tripId) {
                 input name: "trip${tripId}People", type: "enum", title: "Traveler(s)", required: true, submitOnChange: true, options: getPeopleEnumList(), multiple: true 
                 input name: "trip${tripId}Vehicles", type: "enum", title: "Vehicle(s)", required: true, submitOnChange: true, options: getVehiclesEnumList(), multiple: true 
                 input name: "trip${tripId}Days", type: "enum", title: "Day(s) of Week", required: true, multiple:true, options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]  
-                input name: "trip${tripId}EarliestDepartureTime", type: "time", title: "Earliest Departure Time", required: false, width: 4, submitOnChange: true
+                input name: "trip${tripId}EarliestDepartureTime", type: "time", title: "Earliest Departure Time", required: false, width: 4, submitOnChange: false
     
                 input name: "trip${tripId}LatestDepartureTime", type: "time", title: "Latest Departure Time", required: false, width: 4
                 input name: "trip${tripId}TargetArrivalTime", type: "time", title: "Target Arrival", required: false, width: 4
@@ -3100,7 +3110,7 @@ def getInterface(type, txt="") {
     }
 } 
 
-def adjustTimeBySecs(time, secs) {
+def adjustTimeBySecs(time, Integer secs) {
     Calendar cal = Calendar.getInstance()
     cal.setTimeZone(location.timeZone)
     def dateTime = toDateTime(time)
