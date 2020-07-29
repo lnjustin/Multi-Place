@@ -132,19 +132,21 @@ def header() {
     paragraph logo() + MP()
 }
 
+
 def mainPage() {
     dynamicPage(name: "mainPage") {
             section {
                 header()
+                paragraph getInterface("header", " Core Setup")
                 if (state.people) {
-                    href(name: "PeoplePage", title: "Manage People", description: getPeopleDescription(), required: false, page: "PeoplePage", image: checkMark)
-                    href(name: "VehiclesPage", title: "Manage Vehicles", description: getVehiclesDescription(), required: false, page: "VehiclesPage", image: checkMark)
-                    href(name: "PlacesPage", title: "Manage Places", description: getPlacesDescription(), required: false, page: "PlacesPage", image: checkMark)
+                    href(name: "PeoplePage", title: getInterface("boldText", "People"), description: getPeopleDescription(), required: false, page: "PeoplePage", image: checkMark)
+                    href(name: "VehiclesPage", title: getInterface("boldText", "Vehicles"), description: getVehiclesDescription(), required: false, page: "VehiclesPage", image: checkMark)
+                    href(name: "PlacesPage", title: getInterface("boldText", "Places"), description: getPlacesDescription(), required: false, page: "PlacesPage", image: checkMark)
                 }
                 else {
-                    href(name: "PeoplePage", title: "Manage People", description: "Add a person to get started.", required: false, page: "PeoplePage", image: xMark)
-                    href(name: "VehiclesPage", title: "Manage Vehicles", description: "Add at least one person before managing vehicles.", required: false, page: "", image: xMark)
-                    href(name: "PlacesPage", title: "Manage Places", description: "Add at least one person before managing places.", required: false, page: "", image: xMark)
+                    href(name: "PeoplePage", title: getInterface("boldText", "People"), description: "Add a person to get started.", required: false, page: "PeoplePage", image: xMark)
+                    href(name: "VehiclesPage", title: getInterface("boldText", "Vehicles"), description: "Add at least one person before managing vehicles.", required: false, page: "", image: xMark)
+                    href(name: "PlacesPage", title: getInterface("boldText", "Places"), description: "Add at least one person before managing places.", required: false, page: "", image: xMark)
                 }
                 
             }
@@ -152,18 +154,18 @@ def mainPage() {
   			section {
                 paragraph getInterface("header", " Manage Travel Advisor")
                 if (!api_key) {
-                    href(name: "TravelAPIPage", title: "Set Up Travel API Access", description: "Add API Access before managing trips.", required: false, page: "TravelAPIPage", image: xMark)
+                    href(name: "TravelAPIPage", title: getInterface("boldText", "Set Up Travel API Access"), description: "Add API Access before managing trips.", required: false, page: "TravelAPIPage", image: xMark)
                 }
                 else {
-                    href(name: "TripsPage", title: "Manage Trips", description: (state.trips ? getTripEnumList() : "No trips configured"), required: false, page: "TripsPage", image: (state.trips ? checkMark : xMark))
-                    href(name: "RestrictionsPage", title: "Manage Mode-Based Restrictions", description: (restrictedModes ? getRestrictedModesDescription() : "No restrictions configured. Restrict Travel Advisor by Hub Mode."), required: false, page: "RestrictionsPage", image: (restrictedModes ? checkMark : xMark))
-                    href(name: "TravelAPIPage", title: "Manage Travel API Access", description: "Travel API Access configured.", required: false, page: "TravelAPIPage", image: checkMark)
+                    href(name: "TripsPage", title: getInterface("boldText", "Trips"), description: (state.trips ? getTripEnumList() : "No trips configured"), required: false, page: "TripsPage", image: (state.trips ? checkMark : xMark))
+                    href(name: "RestrictionsPage", title: getInterface("boldText", "Mode-Based Restrictions"), description: (restrictedModes ? getRestrictedModesDescription() : "No restrictions configured. Restrict Travel Advisor by Hub Mode."), required: false, page: "RestrictionsPage", image: (restrictedModes ? checkMark : xMark))
+                    href(name: "TravelAPIPage", title: getInterface("boldText", "Manage Travel API Access"), description: "Travel API Access configured.", required: false, page: "TravelAPIPage", image: checkMark)
                 }
             }
             section {
                 paragraph getInterface("header", " Manage Settings")
-                    href(name: "TrackerPage", title: "Manage Tracker Settings", required: false, page: "TrackerPage")
-                    href(name: "AdvancedPage", title: "Manage Advanced Settings", required: false, page: "AdvancedPage")
+                    href(name: "TrackerPage", title: getInterface("boldText", "Tracker Settings"), description: "Colors, Time Format, Traffic Thresholds, Display Timing", required: false, page: "TrackerPage")
+                    href(name: "AdvancedPage", title: getInterface("boldText", "Advanced Settings"), description: "Cache Duration Settings, Enable Debug Logging", required: false, page: "AdvancedPage")
 			}
     }
 
@@ -173,7 +175,7 @@ def TravelAPIPage() {
     dynamicPage(name: "TravelAPIPage") {
         section {
             header()
-            paragraph getInterface("header", " Manage Travel API Access")
+            paragraph getInterface("header", " Travel API Access")
             href(name: "GoogleApiLink", title: "Get Google API Key", required: false, url: "https://developers.google.com/maps/documentation/directions/get-api-key", style: "external")
             input name: "api_key", type: "text", title: "Enter Google API key", required: false, submitOnChange: true
         }
@@ -3135,6 +3137,9 @@ def getInterface(type, txt="") {
             break
         case "subSectionEnd":
             return "</div>"
+            break
+        case "boldText":
+            return "<b>${txt}</b>"
             break
     }
 } 
