@@ -10,7 +10,7 @@
     - research issue of whether sleep competition scores would be cleared by a nap on Monday, after scores already cleared that morning
     - issue with delay when hit button
     - resize moon icon
-    - decide if should start pre-trip check if already at the destinatoin - probably not
+    - test if pre-departure and departure right - test case: be present at the destination before pre-departure window starts, then get in the car - is that the right behavior?
     - make submit button more prominent, so don't accidentally click Next page
     - link to JPG to SVG converter
     - link to SVG avatar creator
@@ -1575,17 +1575,18 @@ def isSwitchForPlace(String placeId, device) {
 
 def startTripPreCheckHandler(data) {
     def tripId = data.tripId
-    logDebug("Starting Pre-Check for Trip ${tripId}")
     if (areDepartureConditionsMet(tripId, true) && !hasTripStarted(tripId)) {
         logDebug("Starting Trip Pre-Check for trip ${tripId}")
         for (personName in settings["trip${tripId}People"]) {
             def personId = getIdOfPersonWithName(personName)
-            state.people[personId]?.current.trip.id = tripId
-            state.people[personId]?.current.trip.departureTime = null      
-            state.people[personId]?.current.trip.recommendedRoute = null
-            state.people[personId]?.current.trip.eta = null
-            state.people[personId]?.current.trip.hasPushedLateNotice = false
-            updateTripPreCheck([tripId: tripId])
+            if (!atDestinationOfTrip(personId, tripId)) {
+                state.people[personId]?.current.trip.id = tripId
+                state.people[personId]?.current.trip.departureTime = null      
+                state.people[personId]?.current.trip.recommendedRoute = null
+                state.people[personId]?.current.trip.eta = null
+                state.people[personId]?.current.trip.hasPushedLateNotice = false
+                updateTripPreCheck([tripId: tripId])
+            }
         }
     }
 }
