@@ -30,6 +30,17 @@ Multi-Place's integration with Withings Sleep allows your family to compete with
 
 <hr><br>
 <p>
+<b>App Setup</b>
+<br>
+1. Create one or more people in Multi-Place by giving each person a name and a picture of your choosing. Tell Multi-Place which Life360 device and/or which Withings Sleep device is specific to each person.<br>
+2. Create one or more vehicles in Multi-Place by giving each vehicle a name and a picture of your choosing. Tell Multi-Place which sensors in Hubitat indicate which person's presence in each vehicle.<br>
+3. Create one or more places in Multi-Place by giving each place a name, an address, and a picture of your choosing. Tell Multi-Place which sensors in Hubitat indicate which person's presence in each place. If you don't have a sensor for each place, just name each place the same as you do in Life360 and Multi-Place will detect your presence at that place when Life360 does.<br>
+4. Create one or more trips in Multi-Place by defining an origin and destination for the trip, as well as which people and vehicles are associated with that trip. Tell Multi-Place a window of time during which you typically depart on the trip, as well as a target arrival time. Select which automations to configure for the trip, such as by selecting which devices to push which notifications to.<br>
+5. Set up restrictions on when Multi-Place detects trip departures and checks travel conditions. For example, you can configure Multi-Place to not do those things when your Hubitat hub is in vacation mode.<br>
+6. Click Done on the App's main page, and Multi-Place does the rest.<br>
+7. For each person, Multi-Place creates a "Tracker" device with the name of "[Person's Name] Multi-Place Tracker". This Tracker device has an attribute called "tracker" with the graphical display that you can add to your dashboard. Multi-Place also outputs this graphical tracker at a cloud endpoint in SVG format, for use in dashboards like Sharptools that require SVG.
+</p>
+<p>
 <b>Dashboard "Tracker" Tile</b>
 <br>
 Multi-Place can output your graphical "Tracker" tile in a format that is supported by most dashboards. The Tracker tile is included as an attribute in a custom "Tracker" device, for quickly adding to dashboards that support HTML, like the native Hubitat dashboard. Any image format, including bitmap images, are supported under this approach. If your dashboard only supports images, not HTML, Multi-Place can instead output the "Tracker" as an SVG image, provided that you use only SVG images for your avatar and icons. This is the case for those using the Sharptools dashboard.
