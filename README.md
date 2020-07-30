@@ -45,7 +45,7 @@ Multi-Place proves useful in any configuration, but for the best performance and
 5. Configure the app on your phone to send a webhook to rule (1) upon detection of the beacon, and to send a webhook to rule (2) upon departure from the beacon. See picture from Geofency below.<br>
 6. At least with the Geofency app, you can set a threshold for how long the beacon has to be detected to be considered present and a separate threshold for how long the beacon has to be not detected to be considered absent. Adjust these thresholds until you find reliable presence as well as timely presence events.<br>
 <img width="250px" border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/RM.png">
-<img width="250px"  border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/rule.png">
+<img width="250px"  align="left" border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/rule.png">
 
 <br>
 <b>Hubitat Package Manager Install Instructions</b><br>
