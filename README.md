@@ -61,7 +61,7 @@ Multi-Place proves useful in any configuration, but to get the most out of Multi
 2. Follow the install instructions in the Multi-Place app<br>
 
 <br>
-<b>Manual Install Instructions</b><br>
+<b>Hubitat Manual Install Instructions</b><br>
 1. Install the Multi-Place Tracker driver<br>
 2. Install the Multi-Place app<br>
 3. Enable OAuth in the Multi-Place app<br>
