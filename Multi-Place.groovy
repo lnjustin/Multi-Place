@@ -2,45 +2,42 @@
 
     - Multi-Place Presence Tracker with Travel Advisor, Powered by Google Directions
 
-    - 
+        - centralizes information specific to a person in a graphical interface
 
  * TO DO: 
     - organize, comment code
      - handle scenario where user clicks "Add Place/Person/Vehicle", fills part of the form out, and then never clicks Submit or Cancel. That adds to the value of lastPerson/Place, etc. and causes problems when app loaded again
     - research issue of whether sleep competition scores would be cleared by a nap on Monday or the start of the month, after scores already cleared that morning
     - issue with delay when hit button
+    - potential issue with not clearing trip people when delete person
     - resize moon icon
     - test if pre-departure and departure right - test case: be present at the destination before pre-departure window starts, then get in the car - is that the right behavior?
+    - handle tracker device name if change person's name
     - what to do if get in car before departure window?
-    - way to cancel trip, so revert back to normal dashboard?
-        - maybe a command on the tracker device to cancel trip?
-        - or other commands??
+    - when cancel trip via button on tracker device, does anything else need to be done besides call cancelTripForPerson?
+    - other commands for tracker device desirable?
     - make submit button more prominent, so don't accidentally click Next page
     - link to JPG to SVG converter
     - link to SVG avatar creator
     - re-enable disabling of debug logging after 30 minutes
+    - consider fixing svg or html for tracker at initialization, instead of on-the-fly, since svg and html could position the tracker differently from a centering standpoint
+    - add readme link
+    - add footer, including version info, license terms
 
-  * Future versions
+  * roadmap
+    - bad traffic switch
     - add snoring indicator
+    - restrict travel advisory by holidays
+    - update ETA and traffic as trip progresses
+    - behavioral learning, e.g., learned departure window
 
   * TO CHECK:
     - check display when in pre-trip interval for displaying duration of trip and route
     - check bad traffic notification
 
   * TO DOCUMENT
-    - repository for icons, so people can push built icons for sharing
-    - README
     - instructions in app?
-    - SVG vs. JPG, including JPG size restrictions, SVG margin requirements
-    - note that SVGs are imported so hit DONE in app to re-import if SVG changed
-    - Tracker options
-        - use only SVG files. Compatible with Sharptools. Avoids long attribute values. Not limited to 1024 characters.
-            - use cloud endpoint AND tracker (cloud endpoint requires refresh on the remote end, whereas tracker refreshes automatically)
-        - use non-SVG files. Compatible with any dashboard that supports HTML (native Hubitat or Sharply). Limited to 1024 characters. Longer attribute values.
-            - don't use cloud endpoint. pointless. use attribute instead.
-
-    - License Terms
-        - Permit derivative works for personal use, but not for distribution
+    - SVG vs. JPG, including JPG size restrictions
 
 
     Attribution
@@ -121,11 +118,11 @@ preferences {
 }
 
 String logo() {
-    return '<img width="10%" style="display: block;margin-left: auto;margin-right: auto;margin-top:0px;" border="0" src="' + getLogoPath() + '">'
+    return '<img width="75px" style="display: block;margin-left: auto;margin-right: auto;margin-top:0px;" border="0" src="' + getLogoPath() + '">'
 }
 
 String MP() {
-    return '<img width="20%" style="display: block;margin-left: auto;margin-right: auto; margin-top: 3px;" border="0" src="' + getMPPath() + '">'
+    return '<img width="125px" style="display: block;margin-left: auto;margin-right: auto; margin-top: 3px;" border="0" src="' + getMPPath() + '">'
 }
 
 def header() {
@@ -152,7 +149,7 @@ def mainPage() {
             }
             
   			section {
-                paragraph getInterface("header", " Manage Travel Advisor")
+                paragraph getInterface("header", " Travel Advisor")
                 if (!api_key) {
                     href(name: "TravelAPIPage", title: getInterface("boldText", "Set Up Travel API Access"), description: "Add API Access before managing trips.", required: false, page: "TravelAPIPage", image: xMark)
                 }
@@ -486,7 +483,7 @@ def clearPersonSettings(String personId) {
             for (tripPerson in settings["trip${tripID}People"]) {
                 if (tripPerson != personNameToDelete) newTripPeople.add(tripPerson)
             }
-            app.updateSetting("trip${tripID}People",[type:"enum",value:newTripPeople])
+            app.updateSetting("trip${tripID}People",[type:"enum",value:(newTripPeople.size() > 0 ? newTripPeople : null)])
         }
     }
     
@@ -2708,10 +2705,11 @@ def getTrackerId(String personId) {
     return "MultiPlaceTracker${personId}"
 }
 
-def createTracker(personId, personName)
+def createTracker(String personId, personName)
 {
     def networkID = getTrackerId(personId)
     def child = addChildDevice("lnjustin", "Multi-Place Tracker", networkID, [label:"${personName} Multi-Place Tracker", isComponent:true, name:"${personName} Multi-Place Tracker"])
+    if (child) child.setPersonId(personId)
 }
 
 def getTracker(personId) {
@@ -2744,6 +2742,7 @@ def getSleepDataSvg(String personId) {
         if (sleepData?.quality == "Restless") sleepColor = "#ee6c5c"  // red
         else if (sleepData?.quality == "Average") sleepColor = "#f2b14d"       // orange
         else if (sleepData?.quality == "Restful") sleepColor = "#73d49f"   // green
+
         svg += '<svg width="20" height="38" z-index="1" x="5" y="-7" viewBox="0 0 20 20" overflow="visible" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">'
         svg += '<style>'
         svg += '.moon {fill:' + sleepColor + '}'
@@ -2855,6 +2854,7 @@ def fetchTracker() {
         if (trackerType == 'svg') {
             svg += '<svg z-index="3" x="7.5" y="51" width="25" height="25">'
             svg += presenceIcon
+            
             svg += '</svg>'
         }
         
@@ -3029,15 +3029,71 @@ def updateTracker(String personId) {
         def isWinner = isWeekSleepWinner || isMonthSleepWinner
 
         // DEBUG CODE
-      //  isInSleepWindow = true
-      //  isWinner = true
+     //   isInSleepWindow = true
+     //   isWinner = true
       //  isWeekWinner = true
-      //  isMonthWinner = true
+     //   isMonthWinner = true
         
         def trophy = ""
         if (isMonthWinner) trophy = "Month Trophy"
         else if (isWeekWinner) trophy = "Week Trophy"
         
+        if (state.people[personId]?.current.trip.id != null) {
+            content +=            'background-position:'
+            if (isInSleepWindow && isWinner) content += 'top 18% left 4%, top 25% right 8%,'
+            else if (isInSleepWindow) content += 'top 18% left 4%,'
+            else if (isWinner) content += 'top 25% right 8%,'
+            content +=            'bottom 24% right 7.5%, bottom 24% left 8%, bottom 0% right 50%, center;'
+            content +=            'background-size:'
+            if (isInSleepWindow && isWinner) content += '20%,20%,'
+            else if (isInSleepWindow) content += '20%,'
+            else if (isWinner) content += '20%,'
+            content +=            '21%, 21%, 100% auto, 65%;'
+            content +=            'background-image:'
+            if (isInSleepWindow && isWinner) {
+                content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
+                content += 'url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'
+            }
+            else if (isInSleepWindow) {
+                content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
+            }
+            else if (isWinner) {
+                content += 'url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'  
+            }
+            content +=            'url("' + destinationIcon + '"),'
+            content +=            'url("' + presenceIcon + '"),'
+            content +=            'url("' + trackerUrl + '"),' 
+            content +=            'url("' + personAvatar + '");'
+        }
+        else {
+            content +=            'background-position:'
+            if (isInSleepWindow && isWinner) content += 'top 18% left 4%, top 25% right 8%,'
+            else if (isInSleepWindow) content += 'top 18% left 4%,'
+            else if (isWinner) content += 'top 25% right 8%,'
+            content +=            'bottom 24% right 7.5%, bottom 0% right 50%, center;'
+            content +=            'background-size:'
+            if (isInSleepWindow && isWinner) content += '20%,20%,'
+            else if (isInSleepWindow) content += '20%,'
+            else if (isWinner) content += '22%,'
+            content +=            '21%, 100% auto, 65%;'
+            content +=            'background-image:'
+             if (isInSleepWindow && isWinner) {
+                content += 'url("' + getSleepTrackerEndpoint(personId) + '&version='
+                content += state.refreshNum + '"), url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'
+            }
+            else if (isInSleepWindow) {
+                content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
+            }
+            else if (isWinner) {
+                content += 'url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'  
+            }               
+            content +=            'url("' + presenceIcon + '"),'
+            content +=            'url("' + trackerUrl + '"),'
+            content +=            'url("' + personAvatar + '");'   
+
+        }
+        
+        /*
         if (state.people[personId]?.current.trip.id != null) {
             content +=            'background-position: bottom 24% right 7.5%, bottom 24% left 8%, bottom 0% right 50%, center'
             if (isInSleepWindow && isWinner) content += ', top 18% left 4%, top 25% right 8%;'
@@ -3092,6 +3148,7 @@ def updateTracker(String personId) {
             }
             else content +=        ';'
         }
+*/
         content += '}'
         content += '</style>'
         content += '<div class="tracker">'
