@@ -37,7 +37,7 @@ Multi-Place can output your graphical "Tracker" tile in a format that is support
 <br>
 <b>Recommended Configuration</b>
 <br>
-Multi-Place proves useful in any configuration, but for the best performance and the most timely presence updates and traffic information, presence sensors for your vehicle(s) are quite helpful. Here are example steps to set that up:<br>
+Multi-Place proves useful in any configuration, but for the best performance and the most timely presence updates and traffic information, presence sensors for your vehicle(s) are quite helpful. Here are example steps to set that up:<br><br>
 1. Purchange a beacon for your car. Recommendation: RadBeacon by Radius Networks ($30). If your vehicle has a USB port, the RadBeacon USB plugs right into it and works well.<br>
 2. Install an app on your phone capable of detecting beacons and sending webhooks. The GeoFency app for iOS works well, for example.<br>
 3. Configure Hubitat with a virtual presence sensor for your vehicle.<br>
