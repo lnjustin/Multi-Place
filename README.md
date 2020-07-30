@@ -29,29 +29,30 @@ Once you depart on a trip, Multi-Place determines your estimated time of arrival
 Multi-Place's integration with Withings Sleep allows your family to compete with one another in terms of your sleep scores. Multi-Place awards a daily ribbon, a weekly trophy, and a monthly trophy to the person with the best sleep score. Get to sleep and show off your bling in the morning.
 
 <hr><br>
+<p>
 <b>Dashboard Tile Output Format</b>
 <br>
 Multi-Place can output your graphical "Tracker" tile in a format that is supported by most dashboards. The Tracker tile is included as an attribute in a custom "Tracker" device, for quickly adding to dashboards that support HTML, like the native Hubitat dashboard. Any image format, including bitmap images, are supported under this approach. If your dashboard only supports images, not HTML, Multi-Place can instead output the "Tracker" as an SVG image, provided that you use only SVG images for your avatar and icons. This is the case for those using the Sharptools dashboard.
-
+</p>
 <br>
 <b>Recommended Configuration</b>
 <br>
 Multi-Place proves useful in any configuration, but for the best performance and the most timely presence updates and traffic information, presence sensors for your vehicle(s) are quite helpful. Here are example steps to set that up:
-1. Purchange a beacon for your car. Recommendation: RadBeacon by Radius Networks ($30). If your vehicle has a USB port, the RadBeacon USB plugs right into it and works well.
-2. Install an app on your phone capable of detecting beacons and sending webhooks. The GeoFency app for iOS works well, for example.
-3. Configure Hubitat with a virtual presence sensor for your vehicle
-4. Configure Rule Machine with two rules: (1) a rule that sets the virtual sensor to present upon a cloud end point trigger; and (2) a rule that sets the virtual sensor to absent upon a different cloud end point trigger. Example rule below.
-5. Configure the app on your phone to send a webhook to rule (1) upon detection of the beacon, and to send a webhook to rule (2) upon departure from the beacon.
-6. At least with the Geofency app, you can set a threshold for how long the beacon has to be detected to be considered present and a separate threshold for how long the beacon has to be not detected to be considered absent. Adjust these thresholds until you find reliable presence as well as timely presence events.
+1. Purchange a beacon for your car. Recommendation: RadBeacon by Radius Networks ($30). If your vehicle has a USB port, the RadBeacon USB plugs right into it and works well.<br>
+2. Install an app on your phone capable of detecting beacons and sending webhooks. The GeoFency app for iOS works well, for example.<br>
+3. Configure Hubitat with a virtual presence sensor for your vehicle.<br>
+4. Configure Rule Machine with two rules: (1) a rule that sets the virtual sensor to present upon a cloud end point trigger; and (2) a rule that sets the virtual sensor to absent upon a different cloud end point trigger. Example rule below.<br>
+5. Configure the app on your phone to send a webhook to rule (1) upon detection of the beacon, and to send a webhook to rule (2) upon departure from the beacon.<br>
+6. At least with the Geofency app, you can set a threshold for how long the beacon has to be detected to be considered present and a separate threshold for how long the beacon has to be not detected to be considered absent. Adjust these thresholds until you find reliable presence as well as timely presence events.<br>
 
 <br>
 <b>Hubitat Package Manager Install Instructions</b><br>
-1. Install Multi-Place Package via Hubitat Package Manager
-2. Follow the install instructions in the Multi-Place app
+1. Install Multi-Place Package via Hubitat Package Manager<br>
+2. Follow the install instructions in the Multi-Place app<br>
 
 <br>
 <b>Manual Install Instructions</b><br>
-1. Install the Multi-Place Tracker driver
-2. Install the Multi-Place app
-3. Enable OAuth in the Multi-Place app
-4. Follow the install instructions in the Multi-Place app
+1. Install the Multi-Place Tracker driver<br>
+2. Install the Multi-Place app<br>
+3. Enable OAuth in the Multi-Place app<br>
+4. Follow the install instructions in the Multi-Place app<br>
