@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="10%" style="min-width:100px; display: block;margin-left: auto;margin-right: auto;margin-top:0px;" border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/logo.png">
+  <img width="100px" style="min-width:100px; display: block;margin-left: auto;margin-right: auto;margin-top:0px;" border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/logo.png">
   <br>
 <img width="20%" style="min-width:150px; display: block;margin-left: auto;margin-right: auto; margin-top: 3px;" border="0" src="https://github.com/lnjustin/App-Images/blob/master/Multi-Place/MP.png">
 </p>
