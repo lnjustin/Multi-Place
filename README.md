@@ -1,7 +1,7 @@
 <p align="center">
-  <img width="100px" style="min-width:100px; display: block;margin-left: auto;margin-right: auto;margin-top:0px;" border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/logo.png">
+  <img width="100px" style="display: block;margin-left: auto;margin-right: auto;margin-top:0px;" border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/logo.png">
   <br>
-<img width="20%" style="min-width:150px; display: block;margin-left: auto;margin-right: auto; margin-top: 3px;" border="0" src="https://github.com/lnjustin/App-Images/blob/master/Multi-Place/MP.png">
+<img width="150px" style="display: block;margin-left: auto;margin-right: auto; margin-top: 3px;" border="0" src="https://github.com/lnjustin/App-Images/blob/master/Multi-Place/MP.png">
 </p>
 
 You don't stay in one place. The smarts of your smart home shouldn't either. Powered by Google Directions, Multi-Place extends your smart home's reach to your favorite places and the roads between them.
