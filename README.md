@@ -37,8 +37,7 @@ Multi-Place can output your graphical "Tracker" tile in a format that is support
 <p>
   <b>Custom Icons</b>
   <br>
-  Custom icons should be trimmed to the edge of the content, leaving no transparent margin. SVG icons will likely work best to scale seamlessly and provide the most flexibility in terms of dashboard support. SVGs in this regard are imported from the custom URL link you define. Import happens when you click "Done" on the app's main page. So any external changes to the SVG icon at that link will need to be re-imported by clicking "Done" again on the app's main page. Please contribute to the repository of built-in custom icons for the app, by sending a pull request at:
-  https://github.com/lnjustin/App-Images/tree/master/Multi-Place
+  Custom icons should be trimmed to the edge of the content, leaving no transparent margin. SVG icons will likely work best to scale seamlessly and provide the most flexibility in terms of dashboard support. SVGs in this regard are imported from the custom URL link you define. Import happens when you click "Done" on the app's main page. So any external changes to the SVG icon at that link will need to be re-imported by clicking "Done" again on the app's main page. Please contribute to the repository of built-in custom icons for the app, by sending a pull request <a href="https://github.com/lnjustin/App-Images/tree/master/Multi-Place">here</a>.
   </p>
 <br>
 <b>Recommended Configuration</b>
