@@ -25,7 +25,7 @@ Once you depart on a trip, Multi-Place determines your estimated time of arrival
 
 <br>
 <img width="250px" align="right" border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/sleepWin.PNG">
-<b>Sleep. Compete. Repeat.</b>
+<b>Sleep. Compete. Repeat.</b><br>
 Multi-Place's integration with Withings Sleep allows your family to compete with one another in terms of your sleep scores. Multi-Place awards a daily ribbon, a weekly trophy, and a monthly trophy to the person with the best sleep score. Get to sleep and show off your bling in the morning.
 
 <hr><br>
