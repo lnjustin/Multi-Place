@@ -7,10 +7,10 @@
 You don't stay in one place. The smarts of your smart home shouldn't either. Powered by Google Directions, Multi-Place extends your smart home's reach to your favorite places and the roads therebetween.
 
 <b>One presence tile. Multiple Places. Clean dashboard look.</b>
-Multi-Place displays your presence across multiple places on a single dashboard tile, with a clean graphical look that is highly customizable. Multi-Place can even display your presence across vehicles, using either dedicated presence sensors or Life360's driving attribute. Moreover, Multi-Place integrates with Withings Sleep, to display your presence in bed. No matter where you are, Multi-Place centralizes the display of your presence into one clean graphic for your dashboard.
+Multi-Place displays your presence across multiple places on a single dashboard tile, referred to in the app as a "Tracker", with a clean graphical look that is highly customizable. Multi-Place can even display your presence across vehicles, using either dedicated presence sensors or Life360's driving attribute. Moreover, Multi-Place integrates with Withings Sleep, to display your presence in bed. No matter where you are, Multi-Place centralizes the display of your presence into one clean graphic for your dashboard.
 
 <b>Automate based on current traffic conditions.</b><br>
-Before you typically leave for a certain destination, like work or school, Multi-Place checks traffic conditions for you. Set up Multi-Place to notify you with a push notification that traffic is worse than usual and that you need to leave X minutes earlier than typical. Or, configure Multi-Place to just discretely display that information on your dashboard only when necessary, so as to keep your dashboard clean and not interrupt you otherwise. Multi-Place stays aprised of traffic conditions shortly before and throughout the window of time that you typically depart for your destination, so you don't have to worry about missing a traffic update.
+Before you typically leave for a certain destination, like work or school, Multi-Place checks traffic conditions for you. Set up Multi-Place to turn on a switch or notify you with a push notification if traffic is bad and  you need to leave X minutes earlier than usual. Or, configure Multi-Place to just discretely display that information on your dashboard only when necessary, so as to keep your dashboard clean and not interrupt you otherwise. Multi-Place stays aprised of traffic conditions shortly before and throughout the window of time that you typically depart for your destination, so you don't have to worry about missing a traffic update.
 
   <img width="250px" align="right" border="0" style="margin-top:5px" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/routeInfo.PNG">
 <b>Always take the best route.</b><br>
@@ -27,3 +27,19 @@ Once you depart on a trip, Multi-Place determines your estimated time of arrival
 <img width="250px" align="right" border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/bed.PNG">
 <b>Sleep. Compete. Repeat.</b>
 Multi-Place's integration with Withings Sleep allows your family to compete with one another in terms of your sleep scores. Multi-Place awards a daily ribbon, a weekly trophy, and a monthly trophy to the person with the best sleep score. Get to sleep and show off your bling in the morning.
+
+<hr>
+<b>Dashboard Tile Output Format</b>
+Multi-Place can output your graphical "Tracker" tile in a format that is supported by most dashboards. The Tracker tile is included as an attribute in a custom "Tracker" device, for quickly adding to dashboards that support HTML, like the native Hubitat dashboard. Any image format, including bitmap images, are supported under this approach. If your dashboard only supports images, not HTML, Multi-Place can instead output the "Tracker" as an SVG image, provided that you use only SVG images for your avatar and icons. This is the case for those using the Sharptools dashboard.
+
+<br>
+<b>Hubitat Package Manager Install Instructions</b>
+1. Install Multi-Place Package via Hubitat Package Manager
+2. Follow the install instructions in the Multi-Place app
+
+<br>
+<b>Manual Install Instructions</b>
+1. Install the Multi-Place Tracker driver
+2. Install the Multi-Place app
+3. Enable OAuth in the Multi-Place app
+4. Follow the install instructions in the Multi-Place app
