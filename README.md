@@ -43,9 +43,9 @@ Multi-Place can output your graphical "Tracker" tile in a format that is support
   <br>
   Custom avatar images may be bitmap or SVG (see note above regarding dashboard compatibility though). Images should have square dimensions, e.g., 200 x 200.
   </p>
-<b>Recommended Configuration</b>
+<b>Recommended Configuration: Life360 + Vehicle Presence Sensors</b>
 <br>
-Multi-Place proves useful in any configuration, but for the best performance and the most timely presence updates and traffic information, presence sensors for your vehicle(s) are quite helpful. Here are example steps to set that up:<br><br>
+Multi-Place proves useful in any configuration, but to get the most out of Multi-Place, use an app like Life360 in conjunction with presence sensors for your vehicle(s). Multi-Place exploits the circles you define in Life360 for your presence across different places. Just name the places the same as in Life360, tell Multi-Place the address for those places, and you're set. You could also use any app that tracks your location using GPS and is capable of sending a webhook that Hubitat can use to set a virtual presence sensor. The same idea can be used in conjunction with beacons to capture presence in your vehicle. For example, here are steps you can use to set up presence sensors for a vehicle:<br><br>
 1. Purchange a beacon for your car. Recommendation: RadBeacon by Radius Networks ($30). If your vehicle has a USB port, the RadBeacon USB plugs right into it and works well.<br>
 2. Install an app on your phone capable of detecting beacons and sending webhooks. The GeoFency app for iOS works well, for example.<br>
 3. Configure Hubitat with a virtual presence sensor for your vehicle.<br>
