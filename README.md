@@ -16,11 +16,11 @@ When Multi-Place checks traffic conditions, it also identifies the best route fo
  
 <b>Automate based on departure and arrival for a typical trip.</b><br>
 Multi-Place can trigger automations based on your departure from the origin of a typical trip and/or your arrival at the destination of that trip. For example, configure Multi-Place to turn the kitchen pendant light to green when you get in the car to leave work and head home, in order to notify your family members at home that you're headed home. Or, tell Multi-Place the time your teenager is supposed to be at school, and selectively get a push notification if he or she arrives X minutes later than the required time.
-
+<br><br>
+  <img width="250px" align="right" border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/eta.PNG">
 <b>Keep your family up-to-date on your ETA.</b><br>
 Once you depart on a trip, Multi-Place determines your estimated time of arrival (ETA) at the trip's destination, given current traffic conditions. Multi-Place displays your ETA on your dashboard, so others in your family can know when you'll arrive. So, having trouble keeping that dinner warm while you wait on your spouse to get home? Perhaps knowing his or her ETA will help.
-<br><br>
-  <img width="250px" style="display: block;" border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/eta.PNG">
+
 
 <b>Display your presence at your favorite places, using your own picture and icons.</b>
 Show where you on your dashboard, whether at home, work, school, or any other place you define. 
