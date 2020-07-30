@@ -28,17 +28,18 @@ Once you depart on a trip, Multi-Place determines your estimated time of arrival
 <b>Sleep. Compete. Repeat.</b>
 Multi-Place's integration with Withings Sleep allows your family to compete with one another in terms of your sleep scores. Multi-Place awards a daily ribbon, a weekly trophy, and a monthly trophy to the person with the best sleep score. Get to sleep and show off your bling in the morning.
 
-<hr>
+<hr><br>
 <b>Dashboard Tile Output Format</b>
+<br>
 Multi-Place can output your graphical "Tracker" tile in a format that is supported by most dashboards. The Tracker tile is included as an attribute in a custom "Tracker" device, for quickly adding to dashboards that support HTML, like the native Hubitat dashboard. Any image format, including bitmap images, are supported under this approach. If your dashboard only supports images, not HTML, Multi-Place can instead output the "Tracker" as an SVG image, provided that you use only SVG images for your avatar and icons. This is the case for those using the Sharptools dashboard.
 
 <br>
-<b>Hubitat Package Manager Install Instructions</b>
+<b>Hubitat Package Manager Install Instructions</b><br>
 1. Install Multi-Place Package via Hubitat Package Manager
 2. Follow the install instructions in the Multi-Place app
 
 <br>
-<b>Manual Install Instructions</b>
+<b>Manual Install Instructions</b><br>
 1. Install the Multi-Place Tracker driver
 2. Install the Multi-Place app
 3. Enable OAuth in the Multi-Place app
