@@ -18,7 +18,7 @@ Multi-Place can trigger automations based on your departure from the origin of a
 
 <b>Keep your family up-to-date on your ETA.</b><br>
 Once you depart on a trip, Multi-Place determines your estimated time of arrival (ETA) at the trip's destination, given current traffic conditions. Multi-Place displays your ETA on your dashboard, so others in your family can know when you'll arrive. So, having trouble keeping that dinner warm while you wait on your spouse to get home? Perhaps knowing his or her ETA will help.
-<br>
+<br><br>
   <img width="250px" style="display: block;" border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/eta.PNG">
 
 <b>Display your presence at your favorite places, using your own picture and icons.</b>
