@@ -41,7 +41,7 @@ Multi-Place can output your graphical "Tracker" tile in a format that is support
   </p>
   <b>Custom Avatar</b>
   <br>
-  Custom avatar images may be bitmap or SVG. Images should have square dimensions, e.g., 200 x 200.
+  Custom avatar images may be bitmap or SVG (see note above regarding dashboard compatibility though). Images should have square dimensions, e.g., 200 x 200.
   </p>
 <b>Recommended Configuration</b>
 <br>
