@@ -6,7 +6,7 @@
 
 You don't stay in one place. The smarts of your smart home shouldn't either. Powered by Google Directions, Multi-Place extends your smart home's reach to your favorite places and the roads therebetween.
 
-<b>One presence tile. Multiple Places. Clean dashboard look.</b>
+<b>One presence tile. Multiple Places. Clean dashboard look.</b><br>
 Multi-Place displays your presence across multiple places on a single dashboard tile, referred to in the app as a "Tracker", with a clean graphical look that is highly customizable. Multi-Place can even display your presence across vehicles, using either dedicated presence sensors or Life360's driving attribute. Moreover, Multi-Place integrates with Withings Sleep, to display your presence in bed. No matter where you are, Multi-Place centralizes the display of your presence into one clean graphic for your dashboard.
 
 <b>Automate based on current traffic conditions.</b><br>
