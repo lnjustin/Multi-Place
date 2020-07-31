@@ -190,7 +190,7 @@ def PeoplePage() {
             header()
                 paragraph getInterface("header", " Manage People")
                 if (state.people) {
-                    paragraph getInterface("note", "After clicking 'Done' from the app's main page to apply any updates, click a person's avatar for accessing his or her graphical tracker via a cloud endpoint.")
+                    paragraph getInterface("note", "Click a person's avatar for accessing his or her graphical tracker via a cloud endpoint. May need to refresh after clicking 'Done' on the app's main page.")
                     state.people.each { id, person ->
                         def avatar = getPersonAvatar(id)
                         def avatarPreview = avatar ? avatar : getPathOfStandardIcon("Dark", "Unknown")
@@ -212,7 +212,8 @@ def PeoplePage() {
                 if (settings["person${state.lastPersonID}Avatar"] == "Custom") {
                     input name: "person${state.lastPersonID}AvatarCustom", type: "text", title: "URL to Custom Avatar", submitOnChange: true, required: true
                 }
-                paragraph getInterface("link", "Avatar Creator", "https://avatarmaker.com/")
+                paragraph getInterface("link", "Convert photo to SVG for Sharptools", "https://vectormagic.com/")
+                paragraph getInterface("link", "SVG Avatar Creator", "https://avatarmaker.com/")
                 
                 input name: "person${state.lastPersonID}Life360", type: "device.Life360User", title: "Life360 Device", submitOnChange: false, multiple: false, required: false
                 paragraph getInterface("note", "If the names of Places in ${app.name} are the same as those in Life360, this Person's presence in ${app.name} will follow his/her presence in Life360.")
@@ -268,6 +269,9 @@ def PeoplePage() {
                     if (settings["person${id}Avatar"] == "Custom") {
                         input name: "person${id}AvatarCustom", type: "text", title: "URL to Custom Avatar", submitOnChange: true, required: true
                     }
+                    paragraph getInterface("link", "Convert photo to SVG for Sharptools", "https://vectormagic.com/")
+                    paragraph getInterface("link", "SVG Avatar Creator", "https://avatarmaker.com/")
+                    
                     input name: "person${id}Life360", type: "device.Life360User", title: "Life360 Device", submitOnChange: true, multiple: false, required: false
                     input name: "person${id}SleepSensor", type: "device.WithingsSleepSensor", title: "Withings Sleep Sensor", submitOnChange: false, multiple: false, required: false
                 paragraph getInterface("subHeader", " Presence Sensors for Person")
@@ -678,7 +682,9 @@ def VehiclesPage() {
                 if (settings["vehicle${state.lastVehicleID}Icon"] == "Custom") {
                     input name: "vehicle${state.lastVehicleID}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                 }
+                paragraph getInterface("link", "Convert photo to SVG for Sharptools", "https://vectormagic.com/")
                 paragraph getInterface("link", "Get Icons", "https://www.flaticon.com/")
+                
                 
                 if (state.people) {
                     state.people.each { personId, person ->
@@ -726,6 +732,7 @@ def VehiclesPage() {
                     if (settings["vehicle${vehicleId}Icon"] == "Custom") {
                         input name: "vehicle${vehicleId}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                     }
+                    paragraph getInterface("link", "Convert photo to SVG for Sharptools", "https://vectormagic.com/")
                     paragraph getInterface("link", "Get Icons", "https://www.flaticon.com/")
                     
                     if (state.people) {
@@ -883,6 +890,7 @@ def PlacesPage() {
                 if (settings["place${state.lastPlaceID}Icon"] == "Custom") {
                     input name: "place${state.lastPlaceID}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                 }
+                paragraph getInterface("link", "Convert photo to SVG for Sharptools", "https://vectormagic.com/")
                 paragraph getInterface("link", "Get Icons", "https://www.flaticon.com/")
                                 
                 input name: "place${state.lastPlaceID}Address", type: "text", title: "Address", submitOnChange: false, required: false, description: "*Address Required for Travel Advisor"
@@ -939,6 +947,7 @@ def PlacesPage() {
                     if (settings["place${placeId}Icon"] == "Custom") {
                         input name: "place${placeId}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                     }
+                    paragraph getInterface("link", "Convert photo to SVG for Sharptools", "https://vectormagic.com/")
                     paragraph getInterface("link", "Get Icons", "https://www.flaticon.com/")
                     
                     input name: "place${placeId}Address", type: "text", title: "Address", submitOnChange: true, required: false, description: "*Address Required for Travel Advisor"
