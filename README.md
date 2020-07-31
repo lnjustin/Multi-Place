@@ -49,7 +49,7 @@ Multi-Place can output your graphical "Tracker" tile in a format that is support
 <p>
   <b>Custom Icons</b>
   <br>
-  Custom place and vehicle icons should be trimmed to the edge of the content, leaving no transparent margin. SVG icons will likely work best to scale seamlessly and provide the most flexibility in terms of dashboard support. SVGs in this regard are imported from the custom URL link you define. Import happens when you click "Done" on the app's main page. So any external changes to the SVG icon at that link will need to be re-imported by clicking "Done" again on the app's main page. Please contribute to the repository of built-in custom icons for the app, by sending a pull request <a href="https://github.com/lnjustin/App-Images/tree/master/Multi-Place">here</a>.
+  Custom place and vehicle icons should be trimmed to the edge of the content, leaving no transparent margin. SVG icons will likely work best to scale seamlessly and provide the most flexibility in terms of dashboard support. SVGs in this regard are imported from the custom URL link you define. Import happens when you click "Done" on the app's main page. So any external changes to the SVG icon at that link will need to be re-imported by clicking "Done" again on the app's main page. Please contribute to the repository of built-in custom icons for the app, by sending a pull request <a href="https://github.com/lnjustin/App-Images/tree/master/Multi-Place">here</a>. Please include any required attribution in the request as well.
   </p>
   <b>Custom Avatar</b>
   <br>
@@ -66,6 +66,10 @@ Multi-Place proves useful in any configuration, but to get the most out of Multi
 6. At least with the Geofency app, you can set a threshold for how long the beacon has to be detected to be considered present and a separate threshold for how long the beacon has to be not detected to be considered absent. Adjust these thresholds until you find reliable presence as well as timely presence events.<br>
 <img width="250px" border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/RM.png">
 <img width="250px"  border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/rule.png">
+
+<br>
+<b>Attrbution</b><br>
+Built-in icons made by:<a href="https://www.flaticon.com/free-icon/dumbbell_1159873" title="Kiranshastry">Kiranshastry</a>, <a href="https://www.flaticon.com/authors/pixel-perfect" title="Pixel perfect">Pixel perfect</a>, <a href="https://www.flaticon.com/authors/freepik" title="Freepik">Freepik</a>, and <a href="https://www.flaticon.com/authors/vitaly-gorbachev" title="Vitaly Gorbachev">Vitaly Gorbachev</a>, all from <a href="https://www.flaticon.com/" title="Flaticon"> www.flaticon.com</a>.
 
 <br>
 <b>Hubitat Package Manager Install Instructions</b><br>
