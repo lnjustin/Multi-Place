@@ -16,7 +16,7 @@ Before you typically leave for a certain destination, like work or school, Multi
   <img width="250px" align="right" border="0" style="margin-top:5px" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/route.PNG">
 <b>Always take the best route.</b><br>
 When Multi-Place checks traffic conditions, it also identifies the best route for you to take to your destination. Set up Multi-Place to display the best route on the dashboard you have beside your door, so that one glance informs you of which way to go to your destination. Or, configure Multi-Place to send you a push notification with the best route when you get in your vehicle or open the garage door during your typical departure time window, so as to have timely traffic information exactly when you need it. Better yet, tell Multi-Place the route you prefer to take typically, and Multi-Place will only display or push route information if the best route to take is different than your preferred route. That way, you're only bothered if you need to take a different route than you would have taken anyway.
-<br>
+<br><br>
 <b>Automate based on departure and arrival for a typical trip.</b><br>
 Multi-Place can trigger automations based on your departure from the origin of a typical trip and/or your arrival at the destination of that trip. For example, configure Multi-Place to turn the kitchen pendant light to green when you get in the car to leave work and head home, in order to notify your family members at home that you're headed home. Or, tell Multi-Place the time your teenager is supposed to be at school, and selectively get a push notification if he or she arrives X minutes later than the required time.
 
