@@ -69,6 +69,10 @@ Multi-Place proves useful in any configuration, but to get the most out of Multi
 <img width="250px" border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/RM.png">
 <img width="250px"  border="0" src="https://github.com/lnjustin/App-Images/raw/master/Multi-Place/Preview/rule.png">
 
+<b>License</b>
+<br>
+For the time being, Multi-Place is licensed under a modified Creative Commons license. As modified, the license terms generally mean you are free to use and modify Multi-Place however you like. If you modify Multi-Place, though, you cannot distribute the modified software. This human-readable summary is not a substitute for the license, accessible <a href="https://github.com/lnjustin/Multi-Place/blob/master/License.md">here</a>.
+
 <br>
 <b>Hubitat Package Manager Install Instructions</b><br>
 1. Install Multi-Place Package via Hubitat Package Manager<br>
