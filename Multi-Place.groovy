@@ -1,63 +1,58 @@
-/*
 
-    - Multi-Place Presence Tracker with Travel Advisor, Powered by Google Directions
-
-        - centralizes information specific to a person in a graphical interface
-
+/**
+ * Multi-Place
+ *
+ * Copyright 2020 Justin Leonard
+ *
+ * Multi-Place has been licensed to you. By downloading, installing, and/or executing this software you hereby agree to the terms and conditions set forth in the Multi-Place license agreement.
+ * <https://raw.githubusercontent.com/lnjustin/Multi-Place/master/License.md>
+ *
+ * Attribution
+ * Icons made by:
+ * <a href="https://www.flaticon.com/free-icon/dumbbell_1159873" title="Kiranshastry">Kiranshastry</a> f
+ * <a href="https://www.flaticon.com/authors/pixel-perfect" title="Pixel perfect">Pixel perfect</a> 
+ * <a href="https://www.flaticon.com/authors/freepik" title="Freepik">Freepik</a> 
+ * <a href="https://www.flaticon.com/authors/vitaly-gorbachev" title="Vitaly Gorbachev">Vitaly Gorbachev</a>
+ * All from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
+ *
+ *
  * TO DO: 
     - organize, comment code
      - handle scenario where user clicks "Add Place/Person/Vehicle", fills part of the form out, and then never clicks Submit or Cancel. That adds to the value of lastPerson/Place, etc. and causes problems when app loaded again
+            - maybe main page can clear everything?
     - research issue of whether sleep competition scores would be cleared by a nap on Monday or the start of the month, after scores already cleared that morning
     - issue with delay when hit button
     - potential issue with not clearing trip people when delete person
-    - resize moon icon
     - test if pre-departure and departure right - test case: be present at the destination before pre-departure window starts, then get in the car - is that the right behavior?
     - handle tracker device name if change person's name
     - what to do if get in car before departure window?
     - when cancel trip via button on tracker device, does anything else need to be done besides call cancelTripForPerson?
     - other commands for tracker device desirable?
     - make submit button more prominent, so don't accidentally click Next page
+    - API call count estimate
     - link to JPG to SVG converter
     - link to SVG avatar creator
-    - re-enable disabling of debug logging after 30 minutes
     - consider fixing svg or html for tracker at initialization, instead of on-the-fly, since svg and html could position the tracker differently from a centering standpoint
     - add readme link
     - add footer, including version info, license terms
 
-  * roadmap
-    - bad traffic switch
+  * potential features to be considered for future releases
+- advanced tracker configuration: specify complete svg or html with variables like ${avatar} to provide absolute control over the look and feel of your traccker.
     - add snoring indicator
+    - integrate with Alexa, Google to be able to ask for route info, ETA, etc.
     - restrict travel advisory by holidays
     - update ETA and traffic as trip progresses
     - behavioral learning, e.g., learned departure window
 
+
   * TO CHECK:
     - check display when in pre-trip interval for displaying duration of trip and route
     - check bad traffic notification
-
-  * TO DOCUMENT
-    - instructions in app?
-    - SVG vs. JPG, including JPG size restrictions
-
-
-    Attribution
-    - Gym: Icons made by <a href="https://www.flaticon.com/free-icon/dumbbell_1159873" title="Kiranshastry">Kiranshastry</a> from <a href="https://www.flaticon.com/" title="Flaticon"> www.flaticon.com</a>
-
-    - Work: <div>Icons made by <a href="https://www.flaticon.com/authors/pixel-perfect" title="Pixel perfect">Pixel perfect</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
-
-    - Home: <div>Icons made by <a href="https://www.flaticon.com/authors/freepik" title="Freepik">Freepik</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
-
-    - Church: <div>Icons made by <a href="http://www.freepik.com/" title="Freepik">Freepik</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
-
-    - School: <div>Icons made by <a href="https://www.flaticon.com/authors/freepik" title="Freepik">Freepik</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
-
-    - minivan: <div>Icons made by <a href="http://www.freepik.com/" title="Freepik">Freepik</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
-
-    - car: <div>Icons made by <a href="http://www.freepik.com/" title="Freepik">Freepik</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
-
-    - man & woman: <div>Icons made by <a href="https://www.flaticon.com/authors/vitaly-gorbachev" title="Vitaly Gorbachev">Vitaly Gorbachev</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
+    - should presence at the origin of a trip be a condition for starting the trip upon a life360 driving state change? How soon does the driving state update? If it doesn't update until after your presence at the origin would have already changed, shouldn't specify as condition for starting trip
 
  */
+
+
 import groovy.json.*
 import java.text.SimpleDateFormat
 import groovy.json.JsonBuilder
@@ -87,6 +82,8 @@ definition(
 @Field String textColorDefault = "#000000"
 @Field Integer trafficDelayThresholdDefault = 10
 @Field Integer sleepMetricsDisplayMinsDefault = 60
+@Field Integer avatarScaleDefault = 100
+@Field Integer circleScaleDefault = 100
 
 @Field String checkMark = "https://raw.githubusercontent.com/lnjustin/App-Images/master/checkMark.svg"
 @Field String xMark = "https://raw.githubusercontent.com/lnjustin/App-Images/master/xMark.svg"
@@ -117,8 +114,10 @@ preferences {
      page name: "AdvancedPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
 }
 
-String logo() {
-    return '<img width="75px" style="display: block;margin-left: auto;margin-right: auto;margin-top:0px;" border="0" src="' + getLogoPath() + '">'
+
+
+String logo(String width='75') {
+    return '<img width="' + width + 'px" style="display: block;margin-left: auto;margin-right: auto;margin-top:0px;" border="0" src="' + getLogoPath() + '">'
 }
 
 String MP() {
@@ -129,6 +128,9 @@ def header() {
     paragraph logo() + MP()
 }
 
+def footer() {
+    paragraph getInterface("line", "") + '<div style="display: block;margin-left: auto;margin-right: auto;text-align:center"><img width="25px" border="0" src="' + getLogoPath() + '"> &copy; 2020 Justin Leonard.<br><a style="color:#51ade5" href="https://github.com/lnjustin/Multi-Place/blob/master/README.md">Readme. Attribution.</a><a style="color:#51ade5" href="https://github.com/lnjustin/Multi-Place/blob/master/License"> License.</a></div>'
+}
 
 def mainPage() {
     dynamicPage(name: "mainPage") {
@@ -164,6 +166,9 @@ def mainPage() {
                     href(name: "TrackerPage", title: getInterface("boldText", "Tracker Settings"), description: "Colors, Time Format, Traffic Thresholds, Display Timing", required: false, page: "TrackerPage")
                     href(name: "AdvancedPage", title: getInterface("boldText", "Advanced Settings"), description: "Cache Duration Settings, Enable Debug Logging", required: false, page: "AdvancedPage")
 			}
+        section {
+         footer()   
+        }
     }
 
 }
@@ -175,6 +180,9 @@ def TravelAPIPage() {
             paragraph getInterface("header", " Travel API Access")
             href(name: "GoogleApiLink", title: "Get Google API Key", required: false, url: "https://developers.google.com/maps/documentation/directions/get-api-key", style: "external")
             input name: "api_key", type: "text", title: "Enter Google API key", required: false, submitOnChange: true
+        }
+        section {
+          footer()   
         }
     }
 }
@@ -227,7 +235,7 @@ def PeoplePage() {
                         input name: "place${placeId}Person${state.lastPersonID}Sensor", type: "capability.presenceSensor", title: "${settings["place${placeId}Name"]} Presence Sensor", description: "Presence Sensor for this person's presence at " + settings["place${placeId}Name"], submitOnChange: true, multiple: false, required: false
                     }
                 }
-
+                paragraph "<br>"
                 input name: "submitNewPerson", type: "button", title: "Submit", width: 3
                 input name: "cancelAddPerson", type: "button", title: "Cancel", width: 3
             }
@@ -280,8 +288,10 @@ def PeoplePage() {
                             input name: "place${placeId}Person${id}Sensor", type: "capability.presenceSensor", title: "${settings["place${placeId}Name"]} Presence Sensor", description: "Presence Sensor for this person's presence at " + settings["place${placeId}Name"], submitOnChange: true, multiple: false, required: false
                         }
                     }
+                    paragraph "<br>"
+                    input name: "submitEditPerson", type: "button", title: "Done", width: 3
                 }
-                input name: "submitEditPerson", type: "button", title: "Done", width: 3
+                
             }            
             else {     
 
@@ -291,6 +301,7 @@ def PeoplePage() {
                 if (state.people) input name: "deletePerson", type: "button", title: "Delete Person", width: 3
                 app.clearSetting("personToDelete")
             } 
+            footer() 
         }
     }
 }
@@ -684,7 +695,7 @@ def VehiclesPage() {
                         input name: "vehicle${state.lastVehicleID}Person${personId}Sensor", type: "capability.presenceSensor", title: "${settings["person${personId}Name"]} Presence Sensor", description: "Presence Sensor for ${settings["person${personId}Name"]}'s presence in vehicle", submitOnChange: false, multiple: false, required: false, width: 4
                     }                        
                 }
-                
+                paragraph "<br>"
                 input name: "submitNewVehicle", type: "button", title: "Submit", width: 3
                 input name: "cancelAddVehicle", type: "button", title: "Cancel", width: 3
             }
@@ -732,8 +743,10 @@ def VehiclesPage() {
                         }    
                         
                     }
+                    paragraph "<br>"
+                    input name: "submitEditVehicle", type: "button", title: "Done", width: 3
                 }
-                input name: "submitEditVehicle", type: "button", title: "Done", width: 3
+                
                // input name: "cancelEditVehicle", type: "button", title: "Cancel", width: 3
             }            
             else {               
@@ -743,6 +756,7 @@ def VehiclesPage() {
                 if (state.vehicles) input name: "deleteVehicle", type: "button", title: "Delete Vehicle", width: 3
                 app.clearSetting("vehicleToDelete")
             } 
+            footer()   
         }
     }
 }
@@ -890,6 +904,7 @@ def PlacesPage() {
                 input name: "place${state.lastPlaceID}ContactSensor", type: "capability.contactSensor", title: "Contact Sensor(s)", submitOnChange: false, multiple: true, required: false, width: 4
                 input name: "place${state.lastPlaceID}Switch", type: "capability.switch", title: "Switch(es)", submitOnChange: false, multiple: true, required: false, width: 4
                 paragraph "<div><br></div>"
+                paragraph "<br>"
                 input name: "submitNewPlace", type: "button", title: "Submit", width: 3
                 input name: "cancelAddPlace", type: "button", title: "Cancel", width: 3
             }
@@ -944,8 +959,10 @@ def PlacesPage() {
                     input name: "place${placeId}GarageDoor", type: "capability.garageDoorControl", title: "Garage Door(s)", submitOnChange: true, multiple: true, required: false, width: 4
                     input name: "place${placeId}ContactSensor", type: "capability.contactSensor", title: "Contact Sensor(s)", submitOnChange: true, multiple: true, required: false, width: 4
                     input name: "place${placeId}Switch", type: "capability.switch", title: "Switch(es)", submitOnChange: true, multiple: true, required: false, width: 4
+                    paragraph "<br>"
+                    input name: "submitEditPlace", type: "button", title: "Done", width: 3
                 }
-                input name: "submitEditPlace", type: "button", title: "Done", width: 3
+                
               //  input name: "cancelEditPlace", type: "button", title: "Cancel", width: 3
             }            
             else {               
@@ -955,7 +972,7 @@ def PlacesPage() {
                 if (state.places) input name: "deletePlace", type: "button", title: "Delete Place", width: 3
                 app.clearSetting("placeToDelete")
             } 
-
+            footer()
         }
     }
 }
@@ -1122,7 +1139,11 @@ def AdvancedPage() {
             input name: "cacheValidityDuration", type: "number", title: "Duration of Directions Cache (Secs)", required: false, defaultValue: cacheValidityDurationDefault
             paragraph "${app.name} also caches the response from Google Directions for showing the route options available in the app. Set for as long as a configuration session may last."
             input name: "optionsCacheValidityDuration", type: "number", title: "Duration of Options Cache (Secs)", required: false, defaultValue: optionsCacheValidityDurationDefault
-            input name: "logEnable", type: "bool", title: "Enable debug logging for 30 minutes", defaultValue: false, submitOnChange: true
+            input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: false
+            input name: "logTimed", type: "bool", title: "Disable debug logging in 30 minutes?", defaultValue: false
+        }
+        section {
+           footer()   
         }
     }   
 }
@@ -1134,6 +1155,9 @@ def TrackerPage() {
             paragraph getInterface("header", " Tracker Settings")
             input name: "textColor", type: "text", title: "Text color", required: false, defaultValue: textColorDefault
             input name: "circleBackgroundColor", type: "text", title: "Circle background color", required: false, defaultValue: circleBackgroundColorDefault
+            input name: "avatarScale", type: "number", title: "Avatar Scale (%)", required: false, defaultValue: avatarScaleDefault
+         //   input name: "circleScale", type: "number", title: "Circle Scale (%)", required: false, defaultValue: circleScaleDefault
+            
             input name: "timeFormat", type: "enum", title: "Time Format", options: ["12 Hour", "24 Hour"], required: false, defaultValue: timeFormatDefault
             input name: "trafficDelayThreshold", type: "number", title: "Consider traffic bad when traffic delays arrival by how many more minutes than usual?", required: false, defaultValue: trafficDelayThresholdDefault
             input name: "isPreferredRouteDisplayed", type: "bool", title: "Display recommended route even if recommend preferred route?", required: false, defaultValue: isPreferredRouteDisplayedDefault
@@ -1141,6 +1165,9 @@ def TrackerPage() {
             input name: "tripPreCheckMins", type: "number", title: "Number of Minutes Before Earliest Departure Time to Check Travel Conditions", required: false, defaultValue: tripPreCheckMinsDefault
             input name: "postArrivalDisplayMins", type: "number", title: "Number of Minutes to Display Trip After Arrival", required: false, defaultValue: postArrivalDisplayMinsDefault
             input name: "sleepMetricsDisplayMins", type: "number", title: "Number of Minutes to Display New Sleep Score", required: false, defaultValue: sleepMetricsDisplayMinsDefault
+        }
+        section {
+           footer()   
         }
     }   
 }
@@ -1171,13 +1198,14 @@ def initialize() {
 }
 
 def initializeDebugLogging() {
-    if (logEnable) runIn(1800, disableDebugLogging)
+    if (logEnable && logTimed) runIn(1800, disableDebugLogging)
     
 }
 
 def disableDebugLogging() {
     logDebug("Disabling Debug Logging")
- //   app.updateSetting("logEnable",[value:"false",type:"bool"])
+    app.updateSetting("logEnable",[value:"false",type:"bool"])
+    app.updateSetting("logTimed",[value:"false",type:"bool"])
 }
 
 def initializeSleep() {
@@ -2047,7 +2075,16 @@ boolean atDestinationOfTrip(String personId, String tripId) {
     logDebug("Person ${personId} is ${(atDest) ? "" : "not "}at the destination of trip ${tripId}.")
     return atDest
 }   
-    
+       
+boolean atOriginOfTrip(String personId, String tripId) {
+    def atOrigin = false
+    if (state.people[personId]?.current?.place?.id == getOriginIdOfTrip(tripId)) {
+        atOrigin = true
+    }
+    logDebug("Person ${personId} is ${(atOrigin) ? "" : "not "}at the origin of trip ${tripId}.")
+    return atOrigin
+}   
+
 boolean atDestinationOfCurrentTrip(personId) {
     def atDest = false
     if (state.people[personId]?.current?.place?.id && state.people[personId]?.current?.trip?.id) {
@@ -2078,8 +2115,8 @@ def handleVehicleChange(String personId) {
 
     // did vehicle change start a trip?
     state.trips.each { tripId, trip ->
-         if (inTripVehicle(personId, tripId) && areDepartureConditionsMet(tripId) && !isPersonOnTrip(personId, tripId) && !atDestinationOfTrip(personId, tripId)) {
-             // assume trip just started because (i) got in a vehicle specified for the trip (ii) while departure conditions met; (iii) trip was not already in progress; and (iv) person is not already at the destination of the trip
+         if (inTripVehicle(personId, tripId) && atOriginOfTrip(personId, tripId) && areDepartureConditionsMet(tripId) && !isPersonOnTrip(personId, tripId) && !atDestinationOfTrip(personId, tripId)) {
+             // assume trip just started because (i) got in a vehicle specified for the trip (ii) at the origin of the trip (iii) while departure conditions met; (iv) trip was not already in progress; and (v) person is not already at the destination of the trip
              startTripForPerson(personId, tripId)             
          }
     }
@@ -2474,6 +2511,7 @@ def TripsPage() {
             if (state.addingTrip) {
                 
                 tripInput(state.lastTripID.toString())
+                paragraph "<br>"
                 input name: "submitNewTrip", type: "button", title: "Submit", width: 3
                 input name: "cancelAddTrip", type: "button", title: "Cancel", width: 3
             }
@@ -2498,9 +2536,10 @@ def TripsPage() {
                         state.editedTripName = newTripName
                     }
                     tripInput(tripId)
-                                 
+                    paragraph "<br>"
+                    input name: "submitEditTrip", type: "button", title: "Submit", width: 3            
                 }
-                input name: "submitEditTrip", type: "button", title: "Submit", width: 3
+                
                // input name: "cancelEditTrip", type: "button", title: "Cancel", width: 3
             }            
             else {               
@@ -2510,8 +2549,8 @@ def TripsPage() {
                 if (state.trips) input name: "deleteTrip", type: "button", title: "Delete Trip", width: 3
                 app.clearSetting("tripToDelete")
             } 
+             footer()
         }
-
     }
 }
 
@@ -2661,6 +2700,14 @@ def getIsPreferredRouteDisplayedSetting() {
 
 def getCircleBackgroundColorSetting() {
     return (circleBackgroundColor) ? circleBackgroundColor : circleBackgroundColorDefault
+}
+
+def getCircleScaleSetting() {
+    return (circleScale) ? circleScale : circleScaleDefault
+}
+
+def getAvatarScaleSetting() {
+    return (avatarScale) ? avatarScale : avatarScale
 }
 
 def getSleepMetricsDisplayMinsSetting() {
@@ -2958,7 +3005,7 @@ def getPresenceIcon(String personId, trackerType=null) {
     if (isInBed) presenceIcon = trackerType == 'svg' ? state.images.sleep["Bed"] : getPathOfStandardIcon("Bed", "Sleep")
     else if (vehicleIdPresentIn != null) presenceIcon = trackerType == 'svg' ? state.images.vehicles[vehicleIdPresentIn] : getVehicleIconById(vehicleIdPresentIn)
     else if (placeOfPresenceById != null) presenceIcon = trackerType == 'svg' ? state.images.places[placeOfPresenceById] : getPlaceIconById(placeOfPresenceById) 
-    else presenceIcon = trackerType == 'svg' ? state.images.unknown["Light"] : getPathOfStandardIcon("Light", "Unknown")
+    else presenceIcon = trackerType == 'svg' ? state.images.places["Generic"] : getPathOfStandardIcon("Generic", "Places")
     
     def isPostArrival = isInPostArrivalDisplayWindow(personId)
     // in post arrival display window for a period of time after arrive at the destination of a trip, as long as the person is still at that destination.
@@ -3034,6 +3081,8 @@ def updateTracker(String personId) {
       //  isWeekWinner = true
      //   isMonthWinner = true
         
+        def avatarSize = (getAvatarScaleSetting() / 100) * 65
+        
         def trophy = ""
         if (isMonthWinner) trophy = "Month Trophy"
         else if (isWeekWinner) trophy = "Week Trophy"
@@ -3048,7 +3097,7 @@ def updateTracker(String personId) {
             if (isInSleepWindow && isWinner) content += '20%,20%,'
             else if (isInSleepWindow) content += '20%,'
             else if (isWinner) content += '20%,'
-            content +=            '21%, 21%, 100% auto, 65%;'
+            content +=            '21%, 21%, 100% auto,' + avatarSize + '%;'
             content +=            'background-image:'
             if (isInSleepWindow && isWinner) {
                 content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
@@ -3075,7 +3124,7 @@ def updateTracker(String personId) {
             if (isInSleepWindow && isWinner) content += '20%,20%,'
             else if (isInSleepWindow) content += '20%,'
             else if (isWinner) content += '22%,'
-            content +=            '21%, 100% auto, 65%;'
+            content +=            '21%, 100% auto,' + avatarSize + '%;'
             content +=            'background-image:'
              if (isInSleepWindow && isWinner) {
                 content += 'url("' + getSleepTrackerEndpoint(personId) + '&version='
@@ -3092,63 +3141,6 @@ def updateTracker(String personId) {
             content +=            'url("' + personAvatar + '");'   
 
         }
-        
-        /*
-        if (state.people[personId]?.current.trip.id != null) {
-            content +=            'background-position: bottom 24% right 7.5%, bottom 24% left 8%, bottom 0% right 50%, center'
-            if (isInSleepWindow && isWinner) content += ', top 18% left 4%, top 25% right 8%;'
-            else if (isInSleepWindow) content += ', top 18% left 4%;'
-            else if (isWinner) content += ', top 25% right 8%;'
-            else content +=        ';'
-            content +=            'background-size: 21%, 21%, 100% auto, 65%'
-            if (isInSleepWindow && isWinner) content += ',20%,20%;'
-            else if (isInSleepWindow) content += ',20%;'
-            else if (isWinner) content += ',20%;'
-            else content +=        ';'
-            content +=            'background-image: url("' + destinationIcon + '"),'
-            content +=            'url("' + presenceIcon + '"),'
-            content +=            'url("' + trackerUrl + '"),' 
-            content +=            'url("' + personAvatar + '")' + (isInSleepWindow ? "" : ";")
-            if (isInSleepWindow && isWinner) {
-                content += ',url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '")'
-                content += ', url("' + getPathOfStandardIcon(trophy,"Sleep") + '");'
-            }
-            else if (isInSleepWindow) {
-                content += ',url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '");'
-            }
-            else if (isWinner) {
-                content += ', url("' + getPathOfStandardIcon(trophy,"Sleep") + '");'  
-            }
-            else content +=        ';'
-        }
-        else {
-            content +=            'background-position: bottom 24% right 7.5%, bottom 0% right 50%, center'
-            if (isInSleepWindow && isWinner) content += ', top 18% left 4%, top 25% right 8%;'
-            else if (isInSleepWindow) content += ', top 18% left 4%;'
-            else if (isWinner) content += ', top 25% right 8%;'
-            else content +=        ';'
-            content +=            'background-size: 21%, 100% auto, 65%'
-            if (isInSleepWindow && isWinner) content += ',20%,20%;'
-            else if (isInSleepWindow) content += ',20%;'
-            else if (isWinner) content += ',22%;'
-            else content +=        ';'
-            content +=            'background-image:'
-            content +=            'url("' + presenceIcon + '"),'
-            content +=            'url("' + trackerUrl + '"),'
-            content +=            'url("' + personAvatar + '")' + (isInSleepWindow ? "" : ";")      
-            if (isInSleepWindow && isWinner) {
-                content += ',url("' + getSleepTrackerEndpoint(personId) + '&version='
-                content += state.refreshNum + '"), url("' + getPathOfStandardIcon(trophy,"Sleep") + '");'
-            }
-            else if (isInSleepWindow) {
-                content += ',url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '");'
-            }
-            else if (isWinner) {
-                content += ', url("' + getPathOfStandardIcon(trophy,"Sleep") + '");'  
-            }
-            else content +=        ';'
-        }
-*/
         content += '}'
         content += '</style>'
         content += '<div class="tracker">'
@@ -3539,6 +3531,7 @@ def getPathOfStandardIcon(String name, type) {
     'School': '/Places/school.svg',
     'Church': '/Places/church.svg',
     'Gym': '/Places/gym.svg',
+    'Generic': '/Places/generic.svg',
 ]
 
             
