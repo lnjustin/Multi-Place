@@ -53,7 +53,7 @@ Multi-Place can output your graphical "Tracker" tile in a format that is support
   </p>
   <b>Custom Avatar</b>
   <br>
-  Custom avatar images may be bitmap or SVG (see note above regarding dashboard compatibility though). Images should have square dimensions, e.g., 200 x 200.
+  Custom avatar images may be bitmap or SVG (see note above regarding dashboard compatibility though). Recommend keeping the image pretty trimmed as well. There's an option to scale the avatar image in the Tracker Settings, if needed to better position it relative to the other graphics.
   </p>
 <b>Recommended Configuration: Life360 + Vehicle Presence Sensors</b>
 <br>
