@@ -17,24 +17,19 @@
  *
  *
  * TO DO: 
-    - organize, comment code
      - handle scenario where user clicks "Add Place/Person/Vehicle", fills part of the form out, and then never clicks Submit or Cancel. That adds to the value of lastPerson/Place, etc. and causes problems when app loaded again
             - maybe main page can clear everything?
     - research issue of whether sleep competition scores would be cleared by a nap on Monday or the start of the month, after scores already cleared that morning
     - issue with delay when hit button
     - potential issue with not clearing trip people when delete person
-    - test if pre-departure and departure right - test case: be present at the destination before pre-departure window starts, then get in the car - is that the right behavior?
     - handle tracker device name if change person's name
-    - what to do if get in car before departure window?
     - when cancel trip via button on tracker device, does anything else need to be done besides call cancelTripForPerson?
-    - other commands for tracker device desirable?
-    - make submit button more prominent, so don't accidentally click Next page
+    - other commands for tracker device
+        - start trip command (for starting trip early if needed)
     - API call count estimate
-    - link to JPG to SVG converter
-    - link to SVG avatar creator
     - consider fixing svg or html for tracker at initialization, instead of on-the-fly, since svg and html could position the tracker differently from a centering standpoint
-    - add readme link
-    - add footer, including version info, license terms
+    - organize, comment code
+
 
   * potential features to be considered for future releases
 - advanced tracker configuration: specify complete svg or html with variables like ${avatar} to provide absolute control over the look and feel of your traccker.
@@ -114,8 +109,6 @@ preferences {
      page name: "AdvancedPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
 }
 
-
-
 String logo(String width='75') {
     return '<img width="' + width + 'px" style="display: block;margin-left: auto;margin-right: auto;margin-top:0px;" border="0" src="' + getLogoPath() + '">'
 }
@@ -129,7 +122,7 @@ def header() {
 }
 
 def footer() {
-    paragraph getInterface("line", "") + '<div style="display: block;margin-left: auto;margin-right: auto;text-align:center"><img width="25px" border="0" src="' + getLogoPath() + '"> &copy; 2020 Justin Leonard.<br><a style="color:#51ade5" href="https://github.com/lnjustin/Multi-Place/blob/master/README.md">Readme. Attribution.</a><a style="color:#51ade5" href="https://github.com/lnjustin/Multi-Place/blob/master/License"> License.</a></div>'
+    paragraph getInterface("line", "") + '<div style="display: block;margin-left: auto;margin-right: auto;text-align:center"><img width="25px" border="0" src="' + getLogoPath() + '"> &copy; 2020 Justin Leonard.<br>' + getInterface("link", "Readme. Attribution.", "https://github.com/lnjustin/Multi-Place/blob/master/README.md") + getInterface("link", " License.", "https://github.com/lnjustin/Multi-Place/blob/master/License")
 }
 
 def mainPage() {
@@ -219,6 +212,7 @@ def PeoplePage() {
                 if (settings["person${state.lastPersonID}Avatar"] == "Custom") {
                     input name: "person${state.lastPersonID}AvatarCustom", type: "text", title: "URL to Custom Avatar", submitOnChange: true, required: true
                 }
+                paragraph getInterface("link", "Avatar Creator", "https://avatarmaker.com/")
                 
                 input name: "person${state.lastPersonID}Life360", type: "device.Life360User", title: "Life360 Device", submitOnChange: false, multiple: false, required: false
                 paragraph getInterface("note", "If the names of Places in ${app.name} are the same as those in Life360, this Person's presence in ${app.name} will follow his/her presence in Life360.")
@@ -684,6 +678,7 @@ def VehiclesPage() {
                 if (settings["vehicle${state.lastVehicleID}Icon"] == "Custom") {
                     input name: "vehicle${state.lastVehicleID}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                 }
+                paragraph getInterface("link", "Get Icons", "https://www.flaticon.com/")
                 
                 if (state.people) {
                     state.people.each { personId, person ->
@@ -731,6 +726,7 @@ def VehiclesPage() {
                     if (settings["vehicle${vehicleId}Icon"] == "Custom") {
                         input name: "vehicle${vehicleId}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                     }
+                    paragraph getInterface("link", "Get Icons", "https://www.flaticon.com/")
                     
                     if (state.people) {
                         state.people.each { personId, person ->
@@ -887,6 +883,7 @@ def PlacesPage() {
                 if (settings["place${state.lastPlaceID}Icon"] == "Custom") {
                     input name: "place${state.lastPlaceID}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                 }
+                paragraph getInterface("link", "Get Icons", "https://www.flaticon.com/")
                                 
                 input name: "place${state.lastPlaceID}Address", type: "text", title: "Address", submitOnChange: false, required: false, description: "*Address Required for Travel Advisor"
                 if (state.people) {
@@ -942,6 +939,7 @@ def PlacesPage() {
                     if (settings["place${placeId}Icon"] == "Custom") {
                         input name: "place${placeId}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                     }
+                    paragraph getInterface("link", "Get Icons", "https://www.flaticon.com/")
                     
                     input name: "place${placeId}Address", type: "text", title: "Address", submitOnChange: true, required: false, description: "*Address Required for Travel Advisor"
                     if (state.people) {
@@ -3158,7 +3156,7 @@ def updateTracker(String personId) {
     }
 }
 
-def getInterface(type, txt="") {
+def getInterface(type, txt="", link="") {
     switch(type) {
         case "line": 
             return "<hr style='background-color:#555555; height: 1px; border: 0;'></hr>"
@@ -3189,6 +3187,9 @@ def getInterface(type, txt="") {
             break
         case "boldText":
             return "<b>${txt}</b>"
+            break
+        case "link":
+            return '<a href="' + link + '" target="_blank" style="color:#51ade5">' + txt + '</a>'
             break
     }
 } 
