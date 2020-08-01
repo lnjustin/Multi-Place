@@ -5,6 +5,7 @@
  *
  * Multi-Place has been licensed to you. By downloading, installing, and/or executing this software you hereby agree to the terms and conditions set forth in the Multi-Place license agreement.
  * <https://raw.githubusercontent.com/lnjustin/Multi-Place/master/License.md>
+ * Beta Version
 **/
 
 metadata
