@@ -15,36 +15,6 @@
  * <a href="https://www.flaticon.com/authors/vitaly-gorbachev" title="Vitaly Gorbachev">Vitaly Gorbachev</a>
  * All from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
  *
- *
- * TO DO: 
-     - handle scenario where user clicks "Add Place/Person/Vehicle", fills part of the form out, and then never clicks Submit or Cancel. That adds to the value of lastPerson/Place, etc. and causes problems when app loaded again
-            - maybe main page can clear everything?
-    - research issue of whether sleep competition scores would be cleared by a nap on Monday or the start of the month, after scores already cleared that morning
-    - issue with delay when hit button
-    - potential issue with not clearing trip people when delete person
-    - handle tracker device name if change person's name
-    - when cancel trip via button on tracker device, does anything else need to be done besides call cancelTripForPerson?
-    - other commands for tracker device
-        - start trip command (for starting trip early if needed)
-    - API call count estimate
-    - consider fixing svg or html for tracker at initialization, instead of on-the-fly, since svg and html could position the tracker differently from a centering standpoint
-    - organize, comment code
-
-
-  * potential features to be considered for future releases
-- advanced tracker configuration: specify complete svg or html with variables like ${avatar} to provide absolute control over the look and feel of your traccker.
-    - add snoring indicator
-    - integrate with Alexa, Google to be able to ask for route info, ETA, etc.
-    - restrict travel advisory by holidays
-    - update ETA and traffic as trip progresses
-    - behavioral learning, e.g., learned departure window
-
-
-  * TO CHECK:
-    - check display when in pre-trip interval for displaying duration of trip and route
-    - check bad traffic notification
-    - should presence at the origin of a trip be a condition for starting the trip upon a life360 driving state change? How soon does the driving state update? If it doesn't update until after your presence at the origin would have already changed, shouldn't specify as condition for starting trip
-
  */
 
 
