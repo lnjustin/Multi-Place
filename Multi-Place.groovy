@@ -2,6 +2,8 @@
 /**
  * Multi-Place
  *
+ * V 1.0-beta1
+ *
  * Copyright 2020 Justin Leonard
  *
  * Multi-Place has been licensed to you. By downloading, installing, and/or executing this software you hereby agree to the terms and conditions set forth in the Multi-Place license agreement.
@@ -15,7 +17,7 @@
  * <a href="https://www.flaticon.com/authors/vitaly-gorbachev" title="Vitaly Gorbachev">Vitaly Gorbachev</a>
  * All from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
  *
- * Beta Version
+ *
  */
 
 
@@ -42,6 +44,7 @@ definition(
 @Field Integer postArrivalDisplayMinsDefault = 10 // default number of minutes to display trip after arrival
 @Field Integer cacheValidityDurationDefault = 120  // default number of seconds to cache directions/routes
 @Field Integer optionsCacheValidityDurationDefault = 900
+@Field Integer geofenceRadiusDefault = 250
 @Field String timeFormatDefault = "12 Hour"
 @Field Boolean isPreferredRouteDisplayedDefault = false
 @Field String circleBackgroundColorDefault = "#808080"
@@ -75,7 +78,7 @@ preferences {
      page name: "PlacesPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
      page name: "TripsPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
      page name: "RestrictionsPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
-     page name: "TravelAPIPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
+     page name: "GoogleAPIPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
      page name: "TrackerPage", title: "", install: false, uninstall: false, nextPage: "mainPage"
      page name: "AdvancedPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
 }
@@ -100,11 +103,15 @@ def mainPage() {
     dynamicPage(name: "mainPage") {
             section {
                 header()
+                if (!api_key) {
+                    paragraph getInterface("header", " Google API")
+                    href(name: "GoogleAPIPage", title: getInterface("boldText", "Configure Google API Access"), description: "Google API Access Required for Travel Advisor and Life360 Free.", required: false, page: "GoogleAPIPage", image: xMark)
+                }
                 paragraph getInterface("header", " Core Setup")
                 if (state.people) {
                     href(name: "PeoplePage", title: getInterface("boldText", "People"), description: getPeopleDescription(), required: false, page: "PeoplePage", image: checkMark)
-                    href(name: "VehiclesPage", title: getInterface("boldText", "Vehicles"), description: getVehiclesDescription(), required: false, page: "VehiclesPage", image: checkMark)
-                    href(name: "PlacesPage", title: getInterface("boldText", "Places"), description: getPlacesDescription(), required: false, page: "PlacesPage", image: checkMark)
+                    href(name: "VehiclesPage", title: getInterface("boldText", "Vehicles"), description: (state.vehicles ? getVehiclesDescription() : "Click to Add Vehicles"), required: false, page: "VehiclesPage", image: (state.vehicles ? checkMark : xMark))
+                    href(name: "PlacesPage", title: getInterface("boldText", "Places"), description: (state.places ? getPlacesDescription() : "Click to Add Places"), required: false, page: "PlacesPage", image: (state.places ? checkMark : xMark))
                 }
                 else {
                     href(name: "PeoplePage", title: getInterface("boldText", "People"), description: "Add a person to get started.", required: false, page: "PeoplePage", image: xMark)
@@ -113,20 +120,20 @@ def mainPage() {
                 }
                 
             }
-            
-  			section {
-                paragraph getInterface("header", " Travel Advisor")
-                if (!api_key) {
-                    href(name: "TravelAPIPage", title: getInterface("boldText", "Set Up Travel API Access"), description: "Add API Access before managing trips.", required: false, page: "TravelAPIPage", image: xMark)
-                }
-                else {
+        
+            if (api_key) {
+                section {
+                    paragraph getInterface("header", " Travel Advisor")
                     href(name: "TripsPage", title: getInterface("boldText", "Trips"), description: (state.trips ? getTripEnumList() : "No trips configured"), required: false, page: "TripsPage", image: (state.trips ? checkMark : xMark))
                     href(name: "RestrictionsPage", title: getInterface("boldText", "Mode-Based Restrictions"), description: (restrictedModes ? getRestrictedModesDescription() : "No restrictions configured. Restrict Travel Advisor by Hub Mode."), required: false, page: "RestrictionsPage", image: (restrictedModes ? checkMark : xMark))
-                    href(name: "TravelAPIPage", title: getInterface("boldText", "Manage Travel API Access"), description: "Travel API Access configured.", required: false, page: "TravelAPIPage", image: checkMark)
                 }
             }
+        
             section {
                 paragraph getInterface("header", " Manage Settings")
+                if (api_key) {
+                    href(name: "GoogleAPIPage", title: getInterface("boldText", "Configure Google API Access"), description: "API Key: ${api_key}", required: false, page: "GoogleAPIPage", image: checkMark)                    
+                }
                     href(name: "TrackerPage", title: getInterface("boldText", "Tracker Settings"), description: "Colors, Time Format, Traffic Thresholds, Display Timing", required: false, page: "TrackerPage")
                     href(name: "AdvancedPage", title: getInterface("boldText", "Advanced Settings"), description: "Cache Duration Settings, Enable Debug Logging", required: false, page: "AdvancedPage")
 			}
@@ -137,11 +144,11 @@ def mainPage() {
 
 }
 
-def TravelAPIPage() {
-    dynamicPage(name: "TravelAPIPage") {
+def GoogleAPIPage() {
+    dynamicPage(name: "GoogleAPIPage") {
         section {
             header()
-            paragraph getInterface("header", " Travel API Access")
+            paragraph getInterface("header", " Google API Access")
             href(name: "GoogleApiLink", title: "Get Google API Key", required: false, url: "https://developers.google.com/maps/documentation/directions/get-api-key", style: "external")
             input name: "api_key", type: "text", title: "Enter Google API key", required: false, submitOnChange: true
         }
@@ -183,13 +190,12 @@ def PeoplePage() {
                 if (settings["person${state.lastPersonID}Avatar"] == "Custom") {
                     input name: "person${state.lastPersonID}AvatarCustom", type: "text", title: "URL to Custom Avatar", submitOnChange: true, required: true
                 }
-                paragraph getInterface("link", "Convert photo to SVG for Sharptools", "https://vectormagic.com/")
                 paragraph getInterface("link", "SVG Avatar Creator", "https://avatarmaker.com/")
                 
-                input name: "person${state.lastPersonID}Life360", type: "device.Life360User", title: "Life360 Device", submitOnChange: false, multiple: false, required: false
+                input name: "person${state.lastPersonID}Life360", type: "device.LocationTrackerUserDriver", title: "Life360 with States Device", submitOnChange: false, multiple: false, required: false
                 paragraph getInterface("note", "If the names of Places in ${app.name} are the same as those in Life360, this Person's presence in ${app.name} will follow his/her presence in Life360.")
                 input name: "person${state.lastPersonID}SleepSensor", type: "device.WithingsSleepSensor", title: "Withings Sleep Sensor", submitOnChange: false, multiple: false, required: false
-                paragraph getInterface("subHeader", " Presence Sensors for Person")
+                if (state.vehicles || state.places) paragraph getInterface("subHeader", " Presence Sensors for Person")
                 if (state.vehicles) {
                     for (vehicleId in state.vehicles) {
                         input name: "vehicle${vehicleId}Person${state.lastPersonID}Sensor", type: "capability.presenceSensor", title: settings["vehicle${vehicleId}Name"] + " Presence Sensor", description: "Presence Sensor for this person's presence in the " + settings["vehicle${vehicleId}Name"] + " vehicle", submitOnChange: true, multiple: false, required: false
@@ -197,7 +203,7 @@ def PeoplePage() {
                 }
                 
                 if (state.places) {
-                    for (placeId in state.places) {
+                    state.places.each { placeId, place ->
                         input name: "place${placeId}Person${state.lastPersonID}Sensor", type: "capability.presenceSensor", title: "${settings["place${placeId}Name"]} Presence Sensor", description: "Presence Sensor for this person's presence at " + settings["place${placeId}Name"], submitOnChange: true, multiple: false, required: false
                     }
                 }
@@ -240,12 +246,11 @@ def PeoplePage() {
                     if (settings["person${id}Avatar"] == "Custom") {
                         input name: "person${id}AvatarCustom", type: "text", title: "URL to Custom Avatar", submitOnChange: true, required: true
                     }
-                    paragraph getInterface("link", "Convert photo to SVG for Sharptools", "https://vectormagic.com/")
                     paragraph getInterface("link", "SVG Avatar Creator", "https://avatarmaker.com/")
                     
-                    input name: "person${id}Life360", type: "device.Life360User", title: "Life360 Device", submitOnChange: true, multiple: false, required: false
+                    input name: "person${id}Life360", type: "device.LocationTrackerUserDriver", title: "Life360 with States Device", submitOnChange: true, multiple: false, required: false
                     input name: "person${id}SleepSensor", type: "device.WithingsSleepSensor", title: "Withings Sleep Sensor", submitOnChange: false, multiple: false, required: false
-                paragraph getInterface("subHeader", " Presence Sensors for Person")
+                    if (state.vehicles || state.places) paragraph getInterface("subHeader", " Presence Sensors for Person")
                     if (state.vehicles) {
                         for (vehicleId in state.vehicles) {
                             input name: "vehicle${vehicleId}Person${id}Sensor", type: "capability.presenceSensor", title: settings["vehicle${vehicleId}Name"] + " Presence Sensor", description: "Presence Sensor for this person's presence in the " + settings["vehicle${vehicleId}Name"] + " vehicle", submitOnChange: true, multiple: false, required: false
@@ -253,7 +258,7 @@ def PeoplePage() {
                     }
                 
                     if (state.places) {
-                        for (placeId in state.places) {
+                        state.places.each { placeId, place ->
                             input name: "place${placeId}Person${id}Sensor", type: "capability.presenceSensor", title: "${settings["place${placeId}Name"]} Presence Sensor", description: "Presence Sensor for this person's presence at " + settings["place${placeId}Name"], submitOnChange: true, multiple: false, required: false
                         }
                     }
@@ -320,7 +325,7 @@ def addPerson(String id) {
     def previousVehicleMap = [id: null, arrival: null, departure: null]
     def currentMap = [place: currentPlaceMap, vehicle: currentVehicleMap, trip: currentTripMap]
     def previousMap = [place: previousPlaceMap, vehicle: previousVehicleMap, trip: previousTripMap]
-    def life360Map = [address: null, atTime: null, isDriving: null]
+    def life360Map = [address: null, latitude: null, longitude: null, placeIdAtAddress: null, placeIdWithName: null, placeIdAtCoordinates: null, atTime: null, isDriving: null]
     def sleepMap = [presence: null, presenceAtTime: null, score: null, quality: null, sleepDataAtTime: null, winner: null, weekWinCount: null, weekWinner: null, monthWinCount: null, monthWinner: null]
     def personMap = [current: currentMap, previous: previousMap, life360: life360Map, places: null, vehicles: null, sleep: sleepMap]
         // so use like state.people.persondId.current.place.name
@@ -452,7 +457,7 @@ def clearPersonSettings(String personId) {
     }
     
     if (state.places) {
-        for (placeId in state.places) {
+        state.places.each { placeId, place ->
              app.updateSetting("place${placeId}Person${personId}Sensor",[type:"capability",value:[]])       
         }
     }
@@ -653,7 +658,6 @@ def VehiclesPage() {
                 if (settings["vehicle${state.lastVehicleID}Icon"] == "Custom") {
                     input name: "vehicle${state.lastVehicleID}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                 }
-                paragraph getInterface("link", "Convert photo to SVG for Sharptools", "https://vectormagic.com/")
                 paragraph getInterface("link", "Get Icons", "https://www.flaticon.com/")
                 
                 
@@ -703,7 +707,6 @@ def VehiclesPage() {
                     if (settings["vehicle${vehicleId}Icon"] == "Custom") {
                         input name: "vehicle${vehicleId}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                     }
-                    paragraph getInterface("link", "Convert photo to SVG for Sharptools", "https://vectormagic.com/")
                     paragraph getInterface("link", "Get Icons", "https://www.flaticon.com/")
                     
                     if (state.people) {
@@ -816,11 +819,12 @@ String getNameOfVehicleWithId(String vehicleId) {
 }
 
 String getIdOfVehicleWithName(String name) {
+    def vehicleId = null
     for (id in state.vehicles) {
-        if (settings["vehicle${id}Name"] == name) return id
+        if (settings["vehicle${id}Name"] == name) vehicleId = id
     }
     log.warn "No Vehicle Found With the Name: ${name}"
-    return null
+    return vehicleId
 }
 
 def deleteVehicle(String nameToDelete) {
@@ -842,7 +846,7 @@ def PlacesPage() {
             header()
             paragraph getInterface("header", " Manage Places")
             if (state.places) {                
-                for (id in state.places) {
+                state.places.each { id, place ->
                     paragraph '<table width=100% border=0 style="float:right;"><tr><td align=center>' + formatImagePreview(getPlaceIconById(id)) + '<font style="font-size:20px;font-weight: bold">' + settings["place${id}Name"] + '</font></td></tr></table>', width: 3
                 }
             }
@@ -861,10 +865,10 @@ def PlacesPage() {
                 if (settings["place${state.lastPlaceID}Icon"] == "Custom") {
                     input name: "place${state.lastPlaceID}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                 }
-                paragraph getInterface("link", "Convert photo to SVG for Sharptools", "https://vectormagic.com/")
                 paragraph getInterface("link", "Get Icons", "https://www.flaticon.com/")
                                 
-                input name: "place${state.lastPlaceID}Address", type: "text", title: "Address", submitOnChange: false, required: false, description: "*Address Required for Travel Advisor"
+                input name: "place${state.lastPlaceID}Address", type: "text", title: "Full Address", submitOnChange: false, required: false, description: "*Address Required for Travel Advisor"
+                paragraph getInterface("note", "Specify addresses in accordance with the format used by the national postal service. Additional address elements such as business names and unit, suite or floor numbers should be avoided.")
                 if (state.people) {
                         state.people.each { personId, person ->
                             def personDisplay = "<table border=0 margin=0><tr>"
@@ -918,10 +922,10 @@ def PlacesPage() {
                     if (settings["place${placeId}Icon"] == "Custom") {
                         input name: "place${placeId}IconCustom", type: "text", title: "URL to Custom Icon", submitOnChange: true, required: true
                     }
-                    paragraph getInterface("link", "Convert photo to SVG for Sharptools", "https://vectormagic.com/")
                     paragraph getInterface("link", "Get Icons", "https://www.flaticon.com/")
                     
-                    input name: "place${placeId}Address", type: "text", title: "Address", submitOnChange: true, required: false, description: "*Address Required for Travel Advisor"
+                    input name: "place${placeId}Address", type: "text", title: "Full Address", submitOnChange: true, required: false, description: "*Address Required for Travel Advisor"
+                    paragraph getInterface("note", "Specify addresses in accordance with the format used by the national postal service. Additional address elements such as business names and unit, suite or floor numbers should be avoided.")
                     if (state.people) {
                         state.people.each { personId, person ->
                             def personDisplay = "<table border=0 margin=0><tr>"
@@ -997,7 +1001,7 @@ def getPlaces() {
 def getPlacesEnumList() {
     def list = []
     if (state.places) {
-        for (id in state.places) {
+        state.places.each { id, place ->
             if (settings["place${id}Name"]) list.add(settings["place${id}Name"])
         }
     }
@@ -1038,15 +1042,17 @@ String getPlaceIconById(String placeId) {
 }
 
 def addPlace(String id) {
-    if (!state.places) state.places = []
-    state.places.add(id)
+    if (!state.places) state.places = [:]
+    def placeMap = [latitude: null, longitude: null]
+    state.places[id] = placeMap
 }
 
 String getIdOfPlaceWithName(String name) {
-    for (id in state.places) {
-        if (settings["place${id}Name"] == name) return id
+    def id = null
+    state.places.each { placeId, place ->
+        if (settings["place${placeId}Name"] == name) id = placeId
     }
-    return null
+    return id
 }
 
 String getNameOfPlaceWithId(String id) {
@@ -1055,16 +1061,19 @@ String getNameOfPlaceWithId(String id) {
 
 
 String getIdOfPlaceWithAddress(String address) {
-    for (id in state.places) {
-        if (settings["place${id}Address"] == address) return id
+    def id = null
+    state.places.each { placeId, place ->
+        if (settings["place${placeId}Address"] == address) id = placeId
     }
-    return null
+    return id
 }
 
 def deletePlace(String nameToDelete) {
-    def idToDelete = getIdOfPlaceWithName(nameToDelete)
-    if (idToDelete && state.places) {       
-        state.places.removeElement(idToDelete)
+    def idToDelete = getIdOfPlaceWithName(nameToDelete)  
+    logDebug("In delete places with idToDelete = ${idToDelete} and state.places = ${state.places}")
+    if (idToDelete && state.places) {    
+        logDebug("Deleting place id ${idToDelete}")
+        state.places.remove(idToDelete)
         state.images.places[idToDelete] = null
         clearPlaceSettings(idToDelete)
     }
@@ -1134,7 +1143,8 @@ def TrackerPage() {
             input name: "textColor", type: "text", title: "Text color", required: false, defaultValue: textColorDefault
             input name: "circleBackgroundColor", type: "text", title: "Circle background color", required: false, defaultValue: circleBackgroundColorDefault
             input name: "avatarScale", type: "number", title: "Avatar Scale (%)", required: false, defaultValue: avatarScaleDefault
-         //   input name: "circleScale", type: "number", title: "Circle Scale (%)", required: false, defaultValue: circleScaleDefault
+             
+            input name: "geofenceRadius", type: "number", title: "Geofence Radius (meters)", required: false, defaultValue: geofenceRadiusDefault
             
             input name: "timeFormat", type: "enum", title: "Time Format", options: ["12 Hour", "24 Hour"], required: false, defaultValue: timeFormatDefault
             input name: "trafficDelayThreshold", type: "number", title: "Consider traffic bad when traffic delays arrival by how many more minutes than usual?", required: false, defaultValue: trafficDelayThresholdDefault
@@ -1167,6 +1177,7 @@ def initialize() {
     unsubscribe()
     unschedule()
     initializeDebugLogging()
+    initializePlaces()
     subscribeTriggers()
     scheduleTimeTriggers()
     initializePresence()
@@ -1184,6 +1195,17 @@ def disableDebugLogging() {
     logDebug("Disabling Debug Logging")
     app.updateSetting("logEnable",[value:"false",type:"bool"])
     app.updateSetting("logTimed",[value:"false",type:"bool"])
+}
+
+def initializePlaces() {
+    state.places.each { placeId, place ->
+        def geocode = geocode(placeId)
+      //  logDebug("geocode response = ${geocode}.")
+        if (geocode) {
+            state.places[placeId]?.latitude = geocode.results?.geometry?.location?.lat[0]
+            state.places[placeId]?.longitude = geocode.results?.geometry?.location?.lng[0]
+        }
+    }
 }
 
 def initializeSleep() {
@@ -1251,7 +1273,7 @@ def initializeSVGImages() {
     
     if (state.places) {
         state.images.places = [:]
-        for (placeId in state.places) {
+        state.places.each { placeId, place ->
             def imageUrl = getPlaceIconById(placeId)
             if (isSVG(imageUrl)) {
                 state.images.places[placeId] = sanitizeSvg(imageUrl.toURL().text)
@@ -1340,11 +1362,11 @@ def subscribePeople() {
     if (state.people) {
         state.people.each { id, person ->
              if (settings["person${id}Life360"]) {
-                def life360Address = settings["person${id}Life360"].currentValue("address1")
-                def timeOfPresence = (state.people[id].life360.address != null && state.people[id].life360.address.equals(life360Address) && state.people[id].life360.atTime != null) ? state.people[id].life360.atTime : new Date().getTime()                
-                state.people[id].life360.address = life360Address
-                state.people[id].life360.atTime = timeOfPresence
-                subscribe(settings["person${id}Life360"], "address", life360AddressHandler)                 
+                def timeOfPresence = (state.people[id].life360.address != null && state.people[id].life360.address.equals(life360Address) && state.people[id].life360.atTime != null) ? state.people[id].life360.atTime : new Date().getTime() 
+                updateLife360(id, timeOfPresence)
+             //   subscribe(settings["person${id}Life360"], "address", life360AddressHandler)  
+                 subscribe(settings["person${id}Life360"], "latitude", life360CoordinatesHandler)
+                 subscribe(settings["person${id}Life360"], "longitude", life360CoordinatesHandler)
                 state.people[id].life360.isDriving = settings["person${id}Life360"].currentValue("isDriving")
                 subscribe(settings["person${id}Life360"], "isDriving", life360DrivingHandler)
             }    
@@ -1354,6 +1376,31 @@ def subscribePeople() {
             }
         }
     }
+}
+
+def life360CoordinatesHandler(evt) {    
+    state.people?.each { personId, person ->
+        if (isLife360DeviceForPerson(personId, evt.getDevice())) {
+            updateLife360(personId, evt.getDate().getTime())
+            setPersonPlace(personId)
+        }
+    }
+
+}
+
+def updateLife360(String personId, timestamp) {
+    def address2 = settings["person${personId}Life360"].currentValue("address2")
+    state.people[personId]?.life360.address = settings["person${personId}Life360"].currentValue("address1") + (address2 != null ? ", " + address2 : "")
+    state.people[personId].life360.placeIdAtAddress = getIdOfPlaceWithAddress(state.people[personId]?.life360.address)
+    
+    state.people[personId].life360.latitude = settings["person${personId}Life360"].currentValue("latitude")
+    state.people[personId].life360.longitude = settings["person${personId}Life360"].currentValue("longitude")
+    def placeIdByCoordinates = getPlaceIdForCoordinates(state.people[personId].life360.latitude, state.people[personId].life360.longitude)
+    state.people[personId].life360.placeIdAtCoordinates = placeIdByCoordinates
+    
+    state.people[personId].life360.placeIdWithName = getIdOfPlaceWithName(settings["person${personId}Life360"].currentValue("address1"))
+    
+    state.people[personId]?.life360.atTime = timestamp
 }
 
 def sleepScoreHandler() {
@@ -1516,7 +1563,7 @@ def subscribeVehicles() {
 
 def subscribePlaces() {
     if (state.places && state.people) {                
-           for (placeId in state.places) {
+           state.places.each { placeId, place ->
                if (settings["place${placeId}GarageDoor"]) subscribe(settings["place${placeId}GarageDoor"], "door", garageDoorHandler)
                if (settings["place${placeId}ContactSensor"]) subscribe(settings["place${placeId}ContactSensor"], "contact", contactSensorHandler)
                if (settings["place${placeId}Switch"]) subscribe(settings["place${placeId}Switch"], "switch", switchHandler)
@@ -1537,7 +1584,7 @@ def subscribePlaces() {
 
 def garageDoorHandler(evt) {
     if (evt.value == "open" || evt.value == "opening") {
-        for (placeId in state.places) {
+        state.places.each { placeId, place ->
             if (isGarageDoorForPlace(placeId, evt.getDevice())) {
                 handlePossiblePreDeparture(placeId)
             }
@@ -1576,7 +1623,7 @@ def isGarageDoorForPlace(String placeId, device) {
 }
 
 def contactSensorHandler(evt) {
-    for (placeId in state.places) {
+    state.places.each { placeId, place ->
         if (isContactSensorForPlace(placeId, evt.getDevice())) {
             handlePossiblePreDeparture(placeId)
         }
@@ -1589,7 +1636,7 @@ def isContactSensorForPlace(String placeId, device) {
 }
 
 def switchHandler(evt) {
-    for (placeId in state.places) {
+    state.places.each { placeId, place ->
         if (isSwitchForPlace(placeId, evt.getDevice())) {
             handlePossiblePreDeparture(placeId)
         }
@@ -1730,7 +1777,7 @@ def stopPostArrivalDisplay(data) {
 
 def startDepartureWindowHandler(data) {
     def tripId = data.tripId
-    // TO DO: determine if anything to do here?
+    // reserved for future use in case need to do something here
 }
 
 def endDepartureWindowHandler(data) {
@@ -1751,6 +1798,49 @@ def cancelCurrentTripForPerson(String personId) {
     state.people[personId]?.current.trip.eta = null 
     state.people[personId]?.current.trip.hasPushedLateNotice = false  
     updateTracker(personId)
+}
+
+def getTripIdListForPerson(String personId) {
+    def tripIdList = []
+    state.trips.each { tripId, trip ->
+        if (isTripPerson(personId, tripId)) {
+            tripIdList.add(tripId)
+        }
+    }
+    return tripIdList  
+}
+
+String getUpcomingTripForPerson(String personId) {
+    // a trip is "upcoming" if it's pre-departure window is open despite not being in the specified departure window, or of course if it's within the departure window
+    def nextUpcomingTripId = null
+    def tripsForPerson = getTripIdListForPerson(personId)
+    for (tripId in tripsForPerson) {
+        if (areDepartureConditionsMet(tripId, true) && !isPersonOnTrip(personId, tripId)) {
+            if (!nextUpcomingTripId) {
+                def tripDeparture = toDateTime(settings["trip${tripId}EarliestDepartureTime"])
+                if (tripDeparture && tripDeparture.after(new Date())) {
+                    nextUpcomingTripId = tripId
+                }
+            }
+            else {
+                def tripDeparture = toDateTime(settings["trip${tripId}EarliestDepartureTime"])
+                def soonestSoFar = toDateTime(settings["trip${nextUpcomingTripId}EarliestDepartureTime"])
+                if (tripDeparture && tripDeparture.after(new Date()) && tripDeparture.before(soonestSoFar)) {
+                    nextUpcomingTripId = tripId
+                }
+            }
+        }
+    }
+    return nextUpcomingTripId
+}
+
+def startUpcomingTripForPerson(String personId) {
+    def tripId = getUpcomingTripForPerson(personId)    
+    if (tripId) {
+        startTripForPerson(personId, tripId)
+        updateTracker(personId)
+    }
+    else logDebug("No upcoming trips for person ${personId}. Nothing to start.")
 }
 
 def performPreDepartureActionsForTrip(String tripId) {
@@ -2161,6 +2251,41 @@ def handleDrivingChange(String personId) {        // isDriving is only set by li
     updateTracker(personId)
 }
 
+String getPlaceIdForCoordinates(latitude, longitude) {
+    def placesPresentAt = []
+    def closestPlace = [placeId: null, distance: null]
+    state.places.each { placeId, place ->
+        def distance = getDistanceBetweenCoordinates(latitude, longitude, place.latitude, place.longitude)  
+        logDebug("Distance = ${distance}")
+        if (distance <= getGeofenceRadiusSetting()) {
+            placesPresentAt.add(placeId)
+            if (closestPlace.placeId == null) closestPlace = [placeId: placeId, distance: distance]
+            else {
+                if (distance < closestPlace.distance) {
+                    closestPlace = [placeId: placeId, distance: distance]
+                }
+            }
+        }
+    }
+    if (placesPresentAt.size() > 1) {
+        log.warn "Present at multiple places according to Life360 lat/long. Only reporting presence at closest place."
+    }
+    return closestPlace.placeId
+}
+
+def getDistanceBetweenCoordinates(lat1, lon1, lat2, lon2) {
+    def radius = 6371    // radius of the earth
+    // In kilometers
+    def latDistance = Math.toRadians(lat2 - lat1)
+    def lonDistance = Math.toRadians(lon2 - lon1)
+ 
+    def a = Math.sin(latDistance / 2) * Math.sin(latDistance / 2) + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.sin(lonDistance / 2) * Math.sin(lonDistance / 2) 
+    def c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    def distance = radius * c * 1000     // convert to meters
+        
+    return distance
+}
+
 def setPersonPlace(String personId) {
     // ** set person's current/previous presence after per place presence updated in state in response to presence event **
     def placesPresent = []
@@ -2186,14 +2311,22 @@ def setPersonPlace(String personId) {
         
         // NOTE: setting to life360 presence means a person won't be able to leave a place until life360 detects departure. But trip can be started sooner with detection that present in vehicle or with garage door
         
-        def life360Address = state.people[personId].life360?.address
-        logDebug("No presence sensors of places present. Life360 address is ${life360Address}")
-        if (life360Address && didChangePlaceByName(personId, life360Address)) {
-            logDebug("changing presence of personId: ${personId} to life360 address of ${life360Address}")
-            changePersonPlaceByName(personId, life360Address)
+        def placeIdAtAddress = state.people[personId].life360?.placeAtAddress
+        def placeIdAtCoordinates = state.people[personId].life360?.placeAtCoordinates
+        def placeIdWithName = state.people[personId].life360?.placeWithName
+        logDebug("No presence sensors of places present.")
+        if (placeIdWithName && didChangePlaceById(personId, placeIdWithName)) {
+            changePersonPlaceById(personId, placeIdWithName)
         }
-        else if (life360Address) {
-            logDebug("Life360 address still valid. Nothing to do.")
+        else if (placeIdAtCoordinates && didChangePlaceById(personId, placeIdAtCoordinates)) {
+            changePersonPlaceById(personId, placeIdAtCoordinates)
+        }
+        else if (placeIdAtAddress && didChangePlaceById(personId, placeIdAtAddress)) {
+            changePersonPlaceById(personId, placeIdAtAddress)
+        }
+        else if (state.people[personId].life360?.address && didChangePlaceByName(personId, state.people[personId].life360?.address)) {
+            // life360 address that doesn't correspond to a place
+            changePersonPlaceByName(personId, state.people[personId].life360?.address)
         }
         else {
             // no life360 address available, and not present anywhere. Set everything to null if wasn't already null
@@ -2411,9 +2544,7 @@ def isLife360DeviceForPerson(String personId, device) {
 def life360AddressHandler(evt) {
     state.people?.each { personId, person ->
         if (isLife360DeviceForPerson(personId, evt.getDevice())) {
-            state.people[personId]?.life360.address = evt.value
-            state.people[personId]?.life360.atTime = evt.getDate().getTime()
-            setPersonPlace(personId)          
+            updateLife360(personId, evt.getDate().getTime())         
         }
     }
 }
@@ -2456,7 +2587,7 @@ def isPlaceDeviceForPerson(personId, placeId, device) {
 
 def placePresenceSensorHandler(evt) {
     logDebug("In place presence sensor handler for event: ${evt.value} with device ${evt.getDevice()}")
-    for (placeId in state.places) {
+    state.places.each { placeId, place ->
         state.people?.each { personId, person ->
             if (isPlaceDeviceForPerson(personId, placeId, evt.getDevice())) {
                 state.people[personId].places[placeId].atTime = evt.getDate().getTime()
@@ -2540,9 +2671,9 @@ def tripInput(String tripId) {
                 input name: "trip${tripId}People", type: "enum", title: "Traveler(s)", required: true, submitOnChange: true, options: getPeopleEnumList(), multiple: true 
                 input name: "trip${tripId}Vehicles", type: "enum", title: "Vehicle(s)", required: true, submitOnChange: true, options: getVehiclesEnumList(), multiple: true 
                 input name: "trip${tripId}Days", type: "enum", title: "Day(s) of Week", required: true, multiple:true, options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]  
-                input name: "trip${tripId}EarliestDepartureTime", type: "time", title: "Earliest Departure Time", required: false, width: 4, submitOnChange: false
+                input name: "trip${tripId}EarliestDepartureTime", type: "time", title: "Earliest Departure Time", required: true, width: 4, submitOnChange: false
     
-                input name: "trip${tripId}LatestDepartureTime", type: "time", title: "Latest Departure Time", required: false, width: 4
+                input name: "trip${tripId}LatestDepartureTime", type: "time", title: "Latest Departure Time", required: true, width: 4
                 input name: "trip${tripId}TargetArrivalTime", type: "time", title: "Target Arrival", required: false, width: 4
                 
                 if (settings["trip${tripId}Origin"] && settings["trip${tripId}Destination"]) {
@@ -2654,6 +2785,10 @@ def deleteTrip(nameToDelete) {
         state.trips.remove(idToDelete)
         clearTripSettings(idToDelete)
     }
+}
+
+def getGeofenceRadiusSetting() {
+     return geofenceRadius ? geofenceRadius : geofenceRadiusDefault   
 }
 
 def getFetchIntervalSetting() {
@@ -3133,6 +3268,7 @@ def updateTracker(String personId) {
         def vehicleOfPresenceByName = getNameOfVehiclePresentIn(personId)
         def vehicle = vehicleOfPresenceByName ? vehicleOfPresenceByName : "None"
         tracker.sendEvent(name: 'vehicle', value: vehicle) 
+        
     }
 }
 
@@ -3370,6 +3506,15 @@ def fetchRoutes(String tripId) {
 
 def fetchRouteOptions(tripId) {
     def subUrl = "directions/json?origin=${getPlaceAddress(getOrigin(tripId))}&destination=${getPlaceAddress(getDestination(tripId))}&key=${getApiKey()}&alternatives=true&mode=driving"   // Don't need traffic info for route options, so exclude for lower billing rate
+    def response = httpGetExec(subUrl)
+    return response
+}
+
+def geocode(String placeId) {
+    
+    def encodedAddress = java.net.URLEncoder.encode(getPlaceAddressById(placeId), "UTF-8")
+    
+    def subUrl = "geocode/json?address=${encodedAddress}&key=${getApiKey()}"   
     def response = httpGetExec(subUrl)
     return response
 }
