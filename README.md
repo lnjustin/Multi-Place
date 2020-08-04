@@ -35,9 +35,9 @@ Multi-Place's integration with Withings Sleep allows your family to compete with
 <br>
 1. Get a Google Directions API key <a href="https://developers.google.com/maps/documentation/directions/get-api-key" target="_blank">here</a>. Enable the Google Directions API. If you will use Life360 with States, also enable the Google Geocoding API. Google gives you $200 a month in credit, which translates to 20,000 API calls a month for free. That’s more than plenty to keep this free for you.<br>
 2. Create one or more people in Multi-Place by giving each person a name and a picture of your choosing. Tell Multi-Place which Life360 device and/or which Withings Sleep device is specific to each person.<br>
-3. Create one or more vehicles in Multi-Place by giving each vehicle a name and a picture of your choosing. Tell Multi-Place which sensors in Hubitat indicate which person's presence in each vehicle.<br>
+3. Create one or more vehicles in Multi-Place by giving each vehicle a name and a picture of your choosing. Tell Multi-Place which sensors in Hubitat indicate which person's presence in each vehicle. See below for instructions on how to do this.<br>
 4.Create one or more places in Multi-Place by giving each place a name, an address, and a picture of your choosing. Tell Multi-Place which sensors in Hubitat indicate which person's presence in each place. You have a few options here:
-     * (A) Use Life360 with States with the free version of Life360. Multi-Place will use the longitude and latitude reported by Life360 with States to detect whether you are at a certain address input into Multi-Place
+     * (A) Use <a href="https://community.hubitat.com/t/release-life360-with-states-track-all-attributes-with-app-and-driver-also-supports-rm4-and-dashboards/18274" target="_blank">Life360 with States</a> with the free version of Life360. Multi-Place will use the longitude and latitude reported by Life360 with States to detect whether you are at a certain address input into Multi-Place
 (B) Use an app like Geofency for iOS on your phone and send webhooks to Rule Machine when you enter/exit a geofence configured for that place. Then just use rule machine to set a virtual presence sensor based on those webhooks
 (C) Use dedicated beacons or other types of presence sensors at one or more places
 (D) Use Life360 with States along with the Paid version of Life360. Name the places in Life360 the same as you name them in Multi-Place. Multi-Place will detect your presence at a Multi-Place when Life360 detects your presence at a Life360 place with the same name.<br>
@@ -62,9 +62,9 @@ Multi-Place can output your graphical "Tracker" tile in a format that is support
   <br>
   Custom avatar images may be bitmap or SVG (see note above regarding dashboard compatibility though). Recommend keeping the image pretty trimmed as well. There's an option to scale the avatar image in the Tracker Settings, if needed to better position it relative to the other graphics.
   </p>
-<b>Recommended Configuration: Life360 + Vehicle Presence Sensors</b>
+<b>Vehicle Presence Sensor Setup</b>
 <br>
-Multi-Place proves useful in any configuration, but to get the most out of Multi-Place, use the <a href="https://community.hubitat.com/t/release-life360-with-states-track-all-attributes-with-app-and-driver-also-supports-rm4-and-dashboards/18274" target="_blank">Life360 with States app</a> in conjunction with presence sensors for your vehicle(s). Multi-Place exploits the circles you define in Life360 for your presence across different places. Just name the places the same as in Life360, tell Multi-Place the address for those places, and you're set. You could also use any app that tracks your location using GPS and is capable of sending a webhook that Hubitat can use to set a virtual presence sensor. The same idea can be used in conjunction with beacons to capture presence in your vehicle. For example, here are steps you can use to set up presence sensors for a vehicle:<br><br>
+Here are steps you can use to set up presence sensors for a vehicle:<br>
 1. Purchange a beacon for your car. Recommendation: RadBeacon by Radius Networks ($30). If your vehicle has a USB port, the RadBeacon USB plugs right into it and works well.<br>
 2. Install an app on your phone capable of detecting beacons and sending webhooks. The GeoFency app for iOS works well, for example.<br>
 3. Configure Hubitat with a virtual presence sensor for your vehicle.<br>
