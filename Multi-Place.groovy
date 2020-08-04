@@ -17,7 +17,6 @@
  * <a href="https://www.flaticon.com/authors/vitaly-gorbachev" title="Vitaly Gorbachev">Vitaly Gorbachev</a>
  * All from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
  *
- *
  */
 
 
@@ -105,7 +104,7 @@ def mainPage() {
                 header()
                 if (!api_key) {
                     paragraph getInterface("header", " Google API")
-                    href(name: "GoogleAPIPage", title: getInterface("boldText", "Configure Google API Access"), description: "Google API Access Required for Travel Advisor and Life360 Free.", required: false, page: "GoogleAPIPage", image: xMark)
+                    href(name: "GoogleAPIPage", title: getInterface("boldText", "Configure Google API Access"), description: "Google API Access Required for Travel Advisor and Recommended for Life360 Free.", required: false, page: "GoogleAPIPage", image: xMark)
                 }
                 paragraph getInterface("header", " Core Setup")
                 if (state.people) {
@@ -1358,15 +1357,21 @@ def subscribeTriggers() {
     subscribePlaces()
 }
 
+def isGoogleAPIConfigured() {
+    return api_key ? true : false    
+}
+
 def subscribePeople() {
     if (state.people) {
         state.people.each { id, person ->
-             if (settings["person${id}Life360"]) {
-                def timeOfPresence = (state.people[id].life360.address != null && state.people[id].life360.address.equals(life360Address) && state.people[id].life360.atTime != null) ? state.people[id].life360.atTime : new Date().getTime() 
-                updateLife360(id, timeOfPresence)
-             //   subscribe(settings["person${id}Life360"], "address", life360AddressHandler)  
-                 subscribe(settings["person${id}Life360"], "latitude", life360CoordinatesHandler)
-                 subscribe(settings["person${id}Life360"], "longitude", life360CoordinatesHandler)
+             if (settings["person${id}Life360"]) { 
+                 if (isGoogleAPIConfigured()) {
+                     def timeOfPresence = (state.people[id].life360.address != null && state.people[id].life360.address.equals(life360Address) && state.people[id].life360.atTime != null) ? state.people[id].life360.atTime : new Date().getTime() 
+                     updateLife360(id, timeOfPresence)
+                     subscribe(settings["person${id}Life360"], "latitude", life360CoordinatesHandler)
+                     subscribe(settings["person${id}Life360"], "longitude", life360CoordinatesHandler)
+                 }
+                 else subscribe(settings["person${id}Life360"], "address", life360AddressHandler) 
                 state.people[id].life360.isDriving = settings["person${id}Life360"].currentValue("isDriving")
                 subscribe(settings["person${id}Life360"], "isDriving", life360DrivingHandler)
             }    
@@ -1393,10 +1398,12 @@ def updateLife360(String personId, timestamp) {
     state.people[personId]?.life360.address = settings["person${personId}Life360"].currentValue("address1") + (address2 != null ? ", " + address2 : "")
     state.people[personId].life360.placeIdAtAddress = getIdOfPlaceWithAddress(state.people[personId]?.life360.address)
     
-    state.people[personId].life360.latitude = settings["person${personId}Life360"].currentValue("latitude")
-    state.people[personId].life360.longitude = settings["person${personId}Life360"].currentValue("longitude")
-    def placeIdByCoordinates = getPlaceIdForCoordinates(state.people[personId].life360.latitude, state.people[personId].life360.longitude)
-    state.people[personId].life360.placeIdAtCoordinates = placeIdByCoordinates
+    if (isGoogleAPIConfigured()) {
+        state.people[personId].life360.latitude = settings["person${personId}Life360"].currentValue("latitude")
+        state.people[personId].life360.longitude = settings["person${personId}Life360"].currentValue("longitude")
+        def placeIdByCoordinates = getPlaceIdForCoordinates(state.people[personId].life360.latitude, state.people[personId].life360.longitude)
+        state.people[personId].life360.placeIdAtCoordinates = placeIdByCoordinates
+    }
     
     state.people[personId].life360.placeIdWithName = getIdOfPlaceWithName(settings["person${personId}Life360"].currentValue("address1"))
     
