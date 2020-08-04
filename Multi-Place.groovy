@@ -1,8 +1,7 @@
 
 /**
  * Multi-Place
- *
- * V 1.0-beta1
+ * V1.0-beta1
  *
  * Copyright 2020 Justin Leonard
  *
@@ -16,6 +15,7 @@
  * <a href="https://www.flaticon.com/authors/freepik" title="Freepik">Freepik</a> 
  * <a href="https://www.flaticon.com/authors/vitaly-gorbachev" title="Vitaly Gorbachev">Vitaly Gorbachev</a>
  * All from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
+ *
  *
  */
 
@@ -288,6 +288,7 @@ def updateAfterPersonNameEdit() {
         }
         app.updateSetting("trip${tripId}People",[type:"enum",value:tripPeople]) 
     }
+    updateTrackerName(state.editedPersonId)
 }
 
 def getPeopleIds() {
@@ -443,31 +444,33 @@ def deletePerson(String nameToDelete) {
 def clearPersonSettings(String personId) {
     def personNameToDelete = getNameOfPersonWithId(personId)
     
-    app.clearSetting("person${personId}Name")
-    app.clearSetting("person${personId}Avatar")
-    app.clearSetting("person${personId}AvatarCustom")
-    app.updateSetting("person${personId}Life360",[type:"device",value:null]) 
-    app.updateSetting("person${personId}SleepSensor",[type:"device",value:null]) 
+    app.removeSetting("person${personId}Name")
+    app.removeSetting("person${personId}Avatar")
+    app.removeSetting("person${personId}AvatarCustom")
+    app.removeSetting("person${personId}Life360")
+    app.removeSetting("person${personId}SleepSensor") 
     
     if (state.vehicles) {
         for (vehicleId in state.vehicles) { 
-            app.updateSetting("vehicle${vehicleId}Person${personId}Sensor",[type:"capability",value:[]])
+         //   app.updateSetting("vehicle${vehicleId}Person${personId}Sensor",[type:"capability",value:[]])
+            app.removeSetting("vehicle${vehicleId}Person${personId}Sensor")
         }
     }
     
     if (state.places) {
         state.places.each { placeId, place ->
-             app.updateSetting("place${placeId}Person${personId}Sensor",[type:"capability",value:[]])       
+           //  app.updateSetting("place${placeId}Person${personId}Sensor",[type:"capability",value:[]])  
+            app.removeSetting("place${placeId}Person${personId}Sensor")
         }
     }
     
     if (state.trips) {
         state.trips.each { tripId, trip ->
             def newTripPeople = []
-            for (tripPerson in settings["trip${tripID}People"]) {
+            for (tripPerson in settings["trip${tripId}People"]) {
                 if (tripPerson != personNameToDelete) newTripPeople.add(tripPerson)
             }
-            app.updateSetting("trip${tripID}People",[type:"enum",value:(newTripPeople.size() > 0 ? newTripPeople : null)])
+            app.updateSetting("trip${tripId}People",[type:"enum",value:(newTripPeople.size() > 0 ? newTripPeople : null)])
         }
     }
     
@@ -752,22 +755,22 @@ def updateAfterVehicleNameEdit() {
 def clearVehicleSettings(String vehicleId) {
     def vehicleNameToDelete = getNameOfVehicleWithId(vehicleId)
     
-    app.clearSetting("vehicle${vehicleId}Name")
-    app.clearSetting("vehicle${vehicleId}Icon")
-    app.clearSetting("vehicle${vehicleId}IconCustom")
+    app.removeSetting("vehicle${vehicleId}Name")
+    app.removeSetting("vehicle${vehicleId}Icon")
+    app.removeSetting("vehicle${vehicleId}IconCustom")
     if (state.people) {
         state.people.each { personId, person ->
-            app.updateSetting("vehicle${vehicleId}Person${personId}Sensor",[type:"capability",value:[]])
+            app.removeSetting("vehicle${vehicleId}Person${personId}Sensor")
         }
     }
     
     if (state.trips) {
         state.trips.each { tripId, trip ->
             def newTripVehicles = []
-            for (tripVehicle in settings["trip${tripID}Vehicles"]) {
+            for (tripVehicle in settings["trip${tripId}Vehicles"]) {
                 if (tripVehicle != vehicleNameToDelete) newTripVehicles.add(tripVehicle)
             }
-            app.updateSetting("trip${tripID}Vehicles",[type:"enum",value:newTripVehicles])
+            app.updateSetting("trip${tripId}Vehicles",[type:"enum",value:newTripVehicles])
         }
     }
 }
@@ -959,25 +962,27 @@ def PlacesPage() {
 }
 
 def clearPlaceSettings(String placeId) {
-    app.clearSetting("place${placeId}Name")
-    app.clearSetting("place${placeId}Icon")
-    app.clearSetting("place${placeId}IconCustom")
-    app.clearSetting("place${placeId}Address")
+    def placeName = getNameOfPlaceWithId(placeId)
+    
+    app.removeSetting("place${placeId}Name")
+    app.removeSetting("place${placeId}Icon")
+    app.removeSetting("place${placeId}IconCustom")
+    app.removeSetting("place${placeId}Address")
     
     if (state.people) {
        state.people.each { personId, person ->
-                app.updateSetting("place${placeId}Person${personId}Sensor",[type:"capability",value:[]])                
+            app.removeSetting("place${placeId}Person${personId}Sensor")                
         }
     }
 
-    app.updateSetting("place${placeId}GarageDoor",[type:"capability",value:[]])
-    app.updateSetting("place${placeId}ContactSensor",[type:"capability",value:[]])
-    app.updateSetting("place${placeId}Switch",[type:"capability",value:[]])
+    app.removeSetting("place${placeId}GarageDoor")
+    app.removeSetting("place${placeId}ContactSensor")
+    app.removeSetting("place${placeId}Switch")
     
     if (state.trips) {
         state.trips.each { tripId, trip ->
-            if (settings["trip${tripID}Origin"]) app.clearSetting("trip${tripID}Origin")
-            if (settings["trip${tripID}Destination"]) app.clearSetting("trip${tripID}Destination")
+            if (settings["trip${tripId}Origin"] == placeName) app.clearSetting("trip${tripId}Origin")
+            if (settings["trip${tripId}Destination"] == placeName) app.clearSetting("trip${tripId}Destination")
         }
     }
 }
@@ -2676,7 +2681,7 @@ def tripInput(String tripId) {
                 input name: "trip${tripId}Destination", type: "enum", title: "Destination of Trip", required: true, submitOnChange: true, options: getPlacesEnumList()    
     
                 input name: "trip${tripId}People", type: "enum", title: "Traveler(s)", required: true, submitOnChange: true, options: getPeopleEnumList(), multiple: true 
-                input name: "trip${tripId}Vehicles", type: "enum", title: "Vehicle(s)", required: true, submitOnChange: true, options: getVehiclesEnumList(), multiple: true 
+                input name: "trip${tripId}Vehicles", type: "enum", title: "Vehicle(s)", required: false, submitOnChange: true, options: getVehiclesEnumList(), multiple: true 
                 input name: "trip${tripId}Days", type: "enum", title: "Day(s) of Week", required: true, multiple:true, options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]  
                 input name: "trip${tripId}EarliestDepartureTime", type: "time", title: "Earliest Departure Time", required: true, width: 4, submitOnChange: false
     
@@ -2731,14 +2736,25 @@ def tripInput(String tripId) {
 }
 
 def clearTripSettings(String tripId) {
-    app.clearSetting("trip${tripID}Origin")
-    app.clearSetting("trip${tripID}Destination")
-    app.clearSetting("trip${tripID}People")
-    app.clearSetting("trip${tripID}Vehicles")
-    app.clearSetting("trip${tripID}Days")
-    app.clearSetting("trip${tripID}EarliestDepartureTime")
-    app.clearSetting("trip${tripID}LatestDepartureTime")
-    app.clearSetting("trip${tripID}TargetArrivalTime")                
+    app.removeSetting("trip${tripId}Origin")
+    app.removeSetting("trip${tripId}Destination")
+    app.removeSetting("trip${tripId}People")
+    app.removeSetting("trip${tripId}Vehicles")
+    app.removeSetting("trip${tripId}Days")
+    app.removeSetting("trip${tripId}EarliestDepartureTime")
+    app.removeSetting("trip${tripId}LatestDepartureTime")
+    app.removeSetting("trip${tripId}TargetArrivalTime")   
+    app.removeSetting("trip${tripId}PreferredRoute")  
+    app.removeSetting("trip${tripId}PreferredRouteBias")  
+    app.removeSetting("trip${tripId}BadTrafficPushDevices")  
+    app.removeSetting("trip${tripId}BadTrafficSwitches")  
+    app.removeSetting("trip${tripId}DeparturePushDevices")  
+    app.removeSetting("trip${tripId}DepartureSwitchesOnorOff")  
+    app.removeSetting("trip${tripId}ArrivalPushDevices")  
+    app.removeSetting("trip${tripId}ArrivalSwitches")  
+    app.removeSetting("trip${tripId}ArrivalSwitchesOnorOff")  
+    app.removeSetting("trip${tripId}PushDevicesIfLate")  
+    app.removeSetting("trip${tripId}LateNotificationMins")  
 }
 
 def getTripEnumList() {
@@ -2877,6 +2893,17 @@ def createTracker(String personId, personName)
     def networkID = getTrackerId(personId)
     def child = addChildDevice("lnjustin", "Multi-Place Tracker", networkID, [label:"${personName} Multi-Place Tracker", isComponent:true, name:"${personName} Multi-Place Tracker"])
     if (child) child.setPersonId(personId)
+}
+
+def updateTrackerName(String personId) {
+     def networkID = getTrackerId(personId)
+    def child = getChildDevice(networkID)
+    if (child) {
+        def personName = getNameOfPersonWithId(personId)
+        def newName = "${personName} Multi-Place Tracker"
+        child.name = newName
+        child.label = newName
+    }  
 }
 
 def getTracker(personId) {
