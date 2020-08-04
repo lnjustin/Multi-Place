@@ -1,7 +1,7 @@
 
 /**
  * Multi-Place
- * V1.0-beta1
+ * V 1.0-beta1
  *
  * Copyright 2020 Justin Leonard
  *
@@ -15,7 +15,6 @@
  * <a href="https://www.flaticon.com/authors/freepik" title="Freepik">Freepik</a> 
  * <a href="https://www.flaticon.com/authors/vitaly-gorbachev" title="Vitaly Gorbachev">Vitaly Gorbachev</a>
  * All from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
- *
  *
  */
 
@@ -1264,6 +1263,8 @@ def initializeSVGImages() {
     // prefetch SVG text from files
     logDebug("Refetching SVG images.")
     
+    state.trackerType = 'svg'
+    
     state.images = [:]
     if (state.people) {
         state.images.people = [:]
@@ -1272,6 +1273,7 @@ def initializeSVGImages() {
             if (isSVG(imageUrl)) {
                 state.images.people[personId] = sanitizeSvg(imageUrl.toURL().text)
             }
+            else state.trackerType = 'html'
         }
     }
     
@@ -1282,7 +1284,7 @@ def initializeSVGImages() {
             if (isSVG(imageUrl)) {
                 state.images.places[placeId] = sanitizeSvg(imageUrl.toURL().text)
             }
-             
+            else state.trackerType = 'html'
         }
     }
     
@@ -1293,7 +1295,7 @@ def initializeSVGImages() {
             if (isSVG(imageUrl)) {
                 state.images.vehicles[vehicleId] = sanitizeSvg(imageUrl.toURL().text)
             }
-             
+            else state.trackerType = 'html'
         }
     }    
     
@@ -1486,8 +1488,25 @@ def updateSleepCompetition() {
         def isWeekEnd = dayOfWeek == Calendar.SUNDAY ? true : false
         def isMonthStart = dayOfMonth == 1 ? true : false
         def isMonthEnd = dayOfMonth == lastDayOfMonth ? true : false
-        if (isWeekStart) clearWeeklyWinCount()
-        if (isMonthStart) clearMonthlyWinCount()
+        
+        if (isWeekStart && getSecondsSince(state.weekSleepWinsLastCleared) > 86400) {
+            // make sure it's been at least 24 hours sinc cleared scores last, so that scores aren't cleared by a nap at the start of the week
+            if (state.weekSleepWinsLastCleared) {
+               if (getSecondsSince(state.weekSleepWinsLastCleared) > 86400) {
+                   clearWeeklyWinCount() 
+               }
+            }
+            else clearWeeklyWinCount()
+        }
+        if (isMonthStart && getSecondsSince(state.monthSleepWinsLastCleared) > 86400) {
+            // make sure it's been at least 24 hours sinc cleared scores last, so that scores aren't cleared by a nap at the start of the month
+            if (state.monthSleepWinsLastCleared) {
+                if (getSecondsSince(state.monthSleepWinsLastCleared) > 86400) {
+                      clearMonthlyWinCount() 
+                }
+            }
+            else clearWeeklyWinCount()
+        }
     
         state.people?.each { personId, person ->
             if (winner.personList.contains(personId)) {
@@ -1542,6 +1561,7 @@ def updateSleepCompetition() {
 }
 
 def clearWeeklyWinCount() {
+    state.weekSleepWinsLastCleared = new Date().getTime()
     state.people?.each { personId, person ->
         state.people[personId]?.sleep.weekWinCount = 0
         state.people[personId]?.sleep.weekWinner = false
@@ -1549,6 +1569,7 @@ def clearWeeklyWinCount() {
 }
 
 def clearMonthlyWinCount() {
+    state.monthSleepWinsLastCleared = new Date().getTime()
     state.people?.each { personId, person ->
         state.people[personId]?.sleep.monthWinCount = 0
         state.people[personId]?.sleep.monthWinner = false
@@ -3194,8 +3215,10 @@ def updateTracker(String personId) {
     def destinationIcon = null
     if (tripId != null) destinationIcon = getDestinationIcon(tripId)
     
-    def trackerType = 'svg'    
-    if(!isSVG(personAvatar) || !isSVG(presenceIcon) || (destinationIcon != null && !isSVG(destinationIcon))) trackerType = 'html'
+    def trackerType = state.trackerType        // sets tracker type based on whether all images are SVGs
+    
+    // commented-out-code sets tracker type based on whether images used at any given time are all SVGs. Pending delete if decide not to do it this way.
+  //  if(!isSVG(personAvatar) || !isSVG(presenceIcon) || (destinationIcon != null && !isSVG(destinationIcon))) trackerType = 'html'
         
   //  trackerType = 'html'  // uncomment line for debugging; forces display of either svg or html version of tracker
     
