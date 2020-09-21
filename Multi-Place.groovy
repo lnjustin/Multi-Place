@@ -2646,7 +2646,7 @@ def TripsPage() {
             paragraph getInterface("header", " Manage Trips")
             if (state.trips) {
                 state.trips.each { tripId, trip ->
-                    paragraph '<table align=left border=0 margin=0 width=100%><tr><td align=center style:"width=50%;">' + formatImagePreview(getOriginIcon(tripId)) + '</td><td align=center style:"width=50%;">' + formatImagePreview(getDestinationIcon(tripId)) + '</td></tr><tr><td align=center style:"width=100%;" colspan=2><font style="font-size:20px;font-weight: bold">' + getNameOfTripWithId(tripId) + '</font></td></tr></table>', width: 3
+                    paragraph '<table align=left border=0 margin=0 width=100%><tr><td align=center style:"width=50%;">' + formatImagePreview(getOriginIcon(tripId)) + '</td><td align=center style:"width=50%;">' + formatImagePreview(getDestinationIcon(tripId)) + '</td></tr><tr><td align=center style:"width=100%;" colspan=2><font style="font-size:20px;font-weight: bold">' + getNameOfTripWithId(tripId) + '</font></td></tr></table>', width: 4
                 }
             }
             paragraph getInterface("line", "")
