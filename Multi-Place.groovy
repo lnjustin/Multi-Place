@@ -2318,16 +2318,21 @@ String getPlaceIdForCoordinates(latitude, longitude) {
     def placesPresentAt = []
     def closestPlace = [placeId: null, distance: null]
     state.places.each { placeId, place ->
-        def distance = getDistanceBetweenCoordinates(latitude, longitude, place.latitude, place.longitude)  
-        logDebug("Distance = ${distance}")
-        if (distance <= getGeofenceRadiusSetting()) {
-            placesPresentAt.add(placeId)
-            if (closestPlace.placeId == null) closestPlace = [placeId: placeId, distance: distance]
-            else {
-                if (distance < closestPlace.distance) {
-                    closestPlace = [placeId: placeId, distance: distance]
+        if (latitude != null && longitude != null && place.latitude != null && place.longitude != null) {
+            def distance = getDistanceBetweenCoordinates(latitude, longitude, place.latitude, place.longitude)  
+            logDebug("Distance = ${distance}")
+            if (distance <= getGeofenceRadiusSetting()) {
+                placesPresentAt.add(placeId)
+                if (closestPlace.placeId == null) closestPlace = [placeId: placeId, distance: distance]
+                else {
+                    if (distance < closestPlace.distance) {
+                        closestPlace = [placeId: placeId, distance: distance]
+                    }
                 }
             }
+        }
+        else {
+            log.warn "Warning: Null latitude or longitude for placeID=${placeId}. Latitude=${latitude}, Longitude=${longitude}, placeLatitude=${place.latitude}, placeLongitude=${place.longitude}."
         }
     }
     if (placesPresentAt.size() > 1) {
