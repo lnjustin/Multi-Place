@@ -19,20 +19,6 @@
  *
  *
 
-  * potential features to be considered for future releases
-- advanced tracker configuration: specify complete svg or html with variables like ${avatar} to provide absolute control over the look and feel of your traccker.
-    - add snoring indicator
-    - integrate with Alexa, Google to be able to ask for route info, ETA, etc.
-    - update ETA and traffic as trip progresses
-    - behavioral learning, e.g., learned departure window
-    - transit mode of transportation, not just driving
-
-
-  * TO CHECK:
-    - check display when in pre-trip interval for displaying duration of trip and route
-    - check bad traffic notification
-    - should presence at the origin of a trip be a condition for starting the trip upon a life360 driving state change? How soon does the driving state update? If it doesn't update until after your presence at the origin would have already changed, shouldn't specify as condition for starting trip
-
  */
 
 
@@ -2848,6 +2834,12 @@ def getNameOfTripWithId(String id) {
 
 String getOrigin(String id) {
     return settings["trip${id}Origin"]
+}
+
+String getOriginIdOfTrip(String tripId) {
+    def originName = getOrigin(tripId)
+    def originId = getIdOfPlaceWithName(originName)
+    return originId
 }
 
 String getDestination(String tripId) {
