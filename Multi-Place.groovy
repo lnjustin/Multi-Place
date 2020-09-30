@@ -1,7 +1,8 @@
 
 /**
  * Multi-Place
- * V 1.0-beta1
+ * v1.01-beta
+
  *
  * Copyright 2020 Justin Leonard
  *
@@ -15,6 +16,7 @@
  * <a href="https://www.flaticon.com/authors/freepik" title="Freepik">Freepik</a> 
  * <a href="https://www.flaticon.com/authors/vitaly-gorbachev" title="Vitaly Gorbachev">Vitaly Gorbachev</a>
  * All from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a></div>
+ *
  *
  */
 
@@ -172,8 +174,9 @@ def PeoplePage() {
                         def avatarPreview = avatar ? avatar : getPathOfStandardIcon("Dark", "Unknown")
                         paragraph '<table width="100%"><tr><td align="center"><font style="font-size:20px;font-weight: bold"><a href="' + getTrackerEndpoint(id) + '" target="_blank"  style="color:black;">' + formatAvatarPreview(avatarPreview) + settings["person${id}Name"] + '</a></font></td></tr></table>', width:3
                     }
+                    paragraph getInterface("line", "")
                 }
-                paragraph getInterface("line", "")
+                
             if (state.addingPerson) {
                 paragraph getInterface("subHeader", " Add Person")
                 input name: "person${state.lastPersonID}Name", type: "text", title: "Unique Name", submitOnChange: false, required: true
@@ -191,7 +194,6 @@ def PeoplePage() {
                 paragraph getInterface("link", "SVG Avatar Creator", "https://avatarmaker.com/")
                 
                 input name: "person${state.lastPersonID}Life360", type: "device.LocationTrackerUserDriver", title: "Life360 with States Device", submitOnChange: false, multiple: false, required: false
-                paragraph getInterface("note", "If the names of Places in ${app.name} are the same as those in Life360, this Person's presence in ${app.name} will follow his/her presence in Life360.")
                 input name: "person${state.lastPersonID}SleepSensor", type: "device.WithingsSleepSensor", title: "Withings Sleep Sensor", submitOnChange: false, multiple: false, required: false
                 if (state.vehicles || state.places) paragraph getInterface("subHeader", " Presence Sensors for Person")
                 if (state.vehicles) {
@@ -645,8 +647,9 @@ def VehiclesPage() {
                 for (id in state.vehicles) {
                     paragraph '<table width="100%" border="0" style="float:right;"><tr><td align="center">' + formatImagePreview(getVehicleIconById(id)) + '<font style="font-size:20px;font-weight: bold">' + settings["vehicle${id}Name"] + '</font></td></tr></table>', width: 3
                 }
+                paragraph getInterface("line", "")
             }
-            paragraph getInterface("line", "")
+            
             if (state.addingVehicle) {
                 input name: "vehicle${state.lastVehicleID}Name", type: "text", title: "Unique Name", submitOnChange: false, required: true
 
@@ -850,12 +853,12 @@ def PlacesPage() {
                 state.places.each { id, place ->
                     paragraph '<table width=100% border=0 style="float:right;"><tr><td align=center>' + formatImagePreview(getPlaceIconById(id)) + '<font style="font-size:20px;font-weight: bold">' + settings["place${id}Name"] + '</font></td></tr></table>', width: 3
                 }
+                paragraph getInterface("line", "")
             }
-            paragraph getInterface("line", "")
+            
             if (state.addingPlace) {
                 paragraph getInterface("subHeader", "Add New Place")
                 input name: "place${state.lastPlaceID}Name", type: "text", title: "Unique Name", submitOnChange: false, required: true
-                paragraph getInterface("note", "Name Places in ${app.name} the the same as those in any associated Life360 account, in order for presence in ${app.name} to follow presence in Life360.")
                                 
                 input name: "place${state.lastPlaceID}Icon", type: "enum", options: getIconsEnum("Places"), title: "Place Icon", submitOnChange: true, multiple: false, required: true, width: 5
                 def placeIcon = settings["place${state.lastPlaceID}Icon"]
@@ -1091,6 +1094,8 @@ def RestrictionsPage() {
             paragraph getInterface("header", " Manage Restrictions")
             paragraph "Do not check travel conditions when..."
             input name: "restrictedModes",type: "mode", title: "The Location Mode is", multiple: true, required: false, width: 6
+            input name: "restrictedSwitch", type: "capability.switch", title: "Any of these switches are ON", submitOnChange: false, multiple: true, required: false, width: 4
+            paragraph getInterface("note", "Example Use Case: Install <a href='https://community.hubitat.com/t/release-holiday-switcher/26136'>Holiday Switcher app</a> to configure a virtual switch to turn ON on desired holidays.") 
         }
     }
 }
@@ -1114,6 +1119,16 @@ Boolean isRestricted() {
             logDebug("Mode Check Failed.")
             isRestricted = true
         }
+    }
+    
+    if (restrictedSwitch) {
+        restrictedSwitch.each { theSwitch ->
+            if (theSwitch.currentValue("switch") == "on") {
+                isRestricted = true
+                logDebug("Restricted due to switch being on.")
+            }
+        }
+        
     }
     
     return isRestricted  
@@ -1408,8 +1423,11 @@ def updateLife360(String personId, timestamp) {
     if (isGoogleAPIConfigured()) {
         state.people[personId].life360.latitude = settings["person${personId}Life360"].currentValue("latitude")
         state.people[personId].life360.longitude = settings["person${personId}Life360"].currentValue("longitude")
-        def placeIdByCoordinates = getPlaceIdForCoordinates(state.people[personId].life360.latitude, state.people[personId].life360.longitude)
-        state.people[personId].life360.placeIdAtCoordinates = placeIdByCoordinates
+        logDebug("Life360 Lat/Long for person ${personId} is ${state.people[personId].life360.latitude} lat, ${state.people[personId].life360.longitude} long")
+        if (state.people[personId].life360.latitude && state.people[personId].life360.longitude) {
+            def placeIdByCoordinates = getPlaceIdForCoordinates(state.people[personId].life360.latitude, state.people[personId].life360.longitude)
+            state.people[personId].life360.placeIdAtCoordinates = placeIdByCoordinates
+        }
     }
     
     state.people[personId].life360.placeIdWithName = getIdOfPlaceWithName(settings["person${personId}Life360"].currentValue("address1"))
@@ -1723,14 +1741,10 @@ def isBadTraffciNotificationConfigured(String tripId) {
 def badTrafficNotification(String tripId) {
     if (isBadTraffciNotificationConfigured(tripId)) {
         def bestRoute = getBestRoute(tripId)
-        def relativeTrafficDelay = bestRoute?.trafficDelay - state.trips[tripId]?.averageTrafficDelay
-
-        if (relativeTrafficDelay > gettrafficDelayThresholdSetting()) {
-            def trafficDelayMins = Math.round(relativeTrafficDelay / 60)
+        if (bestRoute.relativeTrafficDelay > gettrafficDelayThresholdSetting()) {
+            def trafficDelayMins = Math.round(bestRoute.relativeTrafficDelay / 60)
             def trafficDelayStr = (trafficDelayMins == 1) ? trafficDelayMins.toString + " min" : trafficDelayMins.toString + " mins"
-            def etaDate = getETADate(bestRoute.duration)
-            def eta = extractTimeFromDate(etaDate)
-            settings["trip${tripId}BadTrafficPushDevices"].deviceNotification("Bad traffic on your trip from ${settings["trip${tripId}Origin"]} to ${settings["trip${tripId}Destination"]}. Allow ${trafficDelayStr} more than usual. Best route as of now is ${bestRoute.summary}, for ${eta} arrival.")
+            settings["trip${tripId}BadTrafficPushDevices"].deviceNotification("Bad traffic on your trip from ${settings["trip${tripId}Origin"]} to ${settings["trip${tripId}Destination"]}. Allow ${trafficDelayStr} more than usual. Best route as of now is ${bestRoute.summary}, for ${bestRoute.eta} arrival.")
             
             settings["trip${tripId}BadTrafficSwitches"].each { theSwitch ->
                 theSwitch.on()
@@ -2648,8 +2662,9 @@ def TripsPage() {
                 state.trips.each { tripId, trip ->
                     paragraph '<table align=left border=0 margin=0 width=100%><tr><td align=center style:"width=50%;">' + formatImagePreview(getOriginIcon(tripId)) + '</td><td align=center style:"width=50%;">' + formatImagePreview(getDestinationIcon(tripId)) + '</td></tr><tr><td align=center style:"width=100%;" colspan=2><font style="font-size:20px;font-weight: bold">' + getNameOfTripWithId(tripId) + '</font></td></tr></table>', width: 4
                 }
+                paragraph getInterface("line", "")
             }
-            paragraph getInterface("line", "")
+            
             if (state.addingTrip) {
                 
                 tripInput(state.lastTripID.toString())
@@ -3046,13 +3061,12 @@ def fetchTracker() {
         def tripId = state.people[personId]?.current.trip.id
         logDebug("Tracker for personId ${personId} with active tripID ${tripId}")
         def bestRoute = getBestRoute(tripId)
-        def relativeTrafficDelay = bestRoute.trafficDelay - state.trips[tripId].averageTrafficDelay
            
         def isPreferred = isPreferredRoute(tripId, bestRoute.summary)
         def isPreferredRouteSet = isPreferredRouteSet(tripId)
            
         def routeAlert = false
-        if (relativeTrafficDelay > gettrafficDelayThresholdSetting()) routeAlert = true
+        if (bestRoute.relativeTrafficDelay > gettrafficDelayThresholdSetting()) routeAlert = true
         if (isPreferredRouteSet && !isPreferred) routeAlert = true
         
         def conditionColor = "green"
@@ -3257,7 +3271,7 @@ def updateTracker(String personId) {
         if (isMonthWinner) trophy = "Month Trophy"
         else if (isWeekWinner) trophy = "Week Trophy"
         
-        if (state.people[personId]?.current.trip.id != null) {
+        if (tripId != null) {
             content +=            'background-position:'
             if (isInSleepWindow && isWinner) content += 'top 18% left 4%, top 25% right 8%,'
             else if (isInSleepWindow) content += 'top 18% left 4%,'
@@ -3326,6 +3340,16 @@ def updateTracker(String personId) {
         def vehicle = vehicleOfPresenceByName ? vehicleOfPresenceByName : "None"
         tracker.sendEvent(name: 'vehicle', value: vehicle) 
         
+        if (tripId != null) {
+            def bestRoute = getBestRoute(tripId)
+            if (bestRoute.relativeTrafficDelay > gettrafficDelayThresholdSetting()) {
+                def durationMins = Math.round(bestRoute.duration / 60)
+                def durationStr = (durationMins == 1) ? durationMins.toString + " min" : durationMins.toString + " mins"
+                tracker.sendEvent(name: 'travelAlert', value: "${settings["trip${tripId}Origin"]} to ${settings["trip${tripId}Destination"]}: ${durationStr}. Take ${bestRoute.summary}, for ${bestRoute.eta} arrival.")
+            }
+            else tracker.sendEvent(name: 'travelAlert', value: "No Travel Alert")
+        }
+        else tracker.sendEvent(name: 'travelAlert', value: "No Travel Alert")
     }
 }
 
@@ -3439,6 +3463,10 @@ def getTripWithRoutes(String tripId, Boolean doForceUpdate=false) {
                 state.trips[tripId].averageTrafficDelay = oldAverage + ((bestRouteTrafficDelay - oldAverage) / newSampleNum)
                 state.trips[tripId].numSamplesForAverage = newSampleNum
             }
+            def relativeTrafficDelay = state.trips[tripId].routes['0'].trafficDelay - state.trips[tripId].averageTrafficDelay
+            state.trips[tripId].routes['0'].relativeTrafficDelay = relativeTrafficDelay
+            def etaDate = getETADate(state.trips[tripId].routes['0'].duration)
+            state.trips[tripId].routes['0'].eta = extractTimeFromDate(etaDate)
         }
         else {
             log.warn "No response from Google Traffic API. Check connection."
