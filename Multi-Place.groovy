@@ -1210,6 +1210,7 @@ def initialize() {
     unsubscribe()
     unschedule()
     initializeDebugLogging()
+    instantiateToken()
     initializePlaces()
     subscribeTriggers()
     scheduleTimeTriggers()
