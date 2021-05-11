@@ -45,6 +45,7 @@ definition(
 @Field Integer postArrivalDisplayMinsDefault = 10 // default number of minutes to display trip after arrival
 @Field Integer cacheValidityDurationDefault = 120  // default number of seconds to cache directions/routes
 @Field Integer optionsCacheValidityDurationDefault = 900
+@Field Integer LateNotificationMinsDefault = 10
 @Field Integer geofenceRadiusDefault = 250
 @Field String timeFormatDefault = "12 Hour"
 @Field Boolean isPreferredRouteDisplayedDefault = false
@@ -55,17 +56,25 @@ definition(
 @Field Integer avatarScaleDefault = 100
 @Field Integer circleScaleDefault = 100
 
+@Field Integer iterationCount = 1
+
 @Field String checkMark = "https://raw.githubusercontent.com/lnjustin/App-Images/master/checkMark.svg"
 @Field String xMark = "https://raw.githubusercontent.com/lnjustin/App-Images/master/xMark.svg"
 
 mappings
 {
     path("/multiplace/:personId/:type") { action: [ GET: "fetchTracker"] }
+    path("/multiplaceHTML/:personId") { action: [ GET: "fetchHTMLTracker"] }
     path("/multiplaceSleep/:personId") { action: [ GET: "fetchSleepTracker"] }
 }
 
+
 def getTrackerEndpoint(String personId, trackerType='svg') {
     return getFullApiServerUrl() + "/multiplace/${personId}/${trackerType}?access_token=${state.accessToken}"
+}
+
+def getTrackerHTMLEndpoint(String personId) {
+    return getFullApiServerUrl() + "/multiplaceHTML/${personId}?access_token=${state.accessToken}"
 }
 
 def getSleepTrackerEndpoint(String personId) {
@@ -125,7 +134,7 @@ def mainPage() {
             if (api_key) {
                 section {
                     paragraph getInterface("header", " Travel Advisor")
-                    href(name: "TripsPage", title: getInterface("boldText", "Trips"), description: (state.trips ? getTripEnumList() : "No trips configured"), required: false, page: "TripsPage", image: (state.trips ? checkMark : xMark))
+                    href(name: "TripsPage", title: getInterface("boldText", "Trips"), description: (state.trips ? getTripDescriptionList() : "No trips configured"), required: false, page: "TripsPage", image: (state.trips ? checkMark : xMark))
                     href(name: "RestrictionsPage", title: getInterface("boldText", "Mode-Based Restrictions"), description: (restrictedModes ? getRestrictedModesDescription() : "No restrictions configured. Restrict Travel Advisor by Hub Mode."), required: false, page: "RestrictionsPage", image: (restrictedModes ? checkMark : xMark))
                 }
             }
@@ -173,7 +182,7 @@ def PeoplePage() {
                     state.people.each { id, person ->
                         def avatar = getPersonAvatar(id)
                         def avatarPreview = avatar ? avatar : getPathOfStandardIcon("Dark", "Unknown")
-                        paragraph '<table width="100%"><tr><td align="center"><font style="font-size:20px;font-weight: bold"><a href="' + getTrackerEndpoint(id) + '" target="_blank"  style="color:black;">' + formatAvatarPreview(avatarPreview) + settings["person${id}Name"] + '</a></font></td></tr></table>', width:3
+                        paragraph '<table width="100%"><tr><td align="center"><font style="font-size:20px;font-weight: bold"><a href="' + getTrackerHTMLEndpoint(id) + '" target="_blank"  style="color:black;">' + formatAvatarPreview(avatarPreview) + settings["person${id}Name"] + '</a></font></td></tr></table>', width:3
                     }
                     paragraph getInterface("line", "")
                 }
@@ -281,6 +290,31 @@ def PeoplePage() {
     }
 }
 
+def hasOnlySleepSensor(personId) {
+    Boolean hasOnlySleepSensor = null
+    if (settings["person${personId}SleepSensor"]) {
+        if (!settings["person${personId}Life360"]) {
+            if (state.vehicles || state.places) {
+                if (state.vehicles) {
+                    for (vehicleId in state.vehicles) {
+                         if (settings["vehicle${vehicleId}Person${personId}Sensor"]) hasOnlySleepSensor = false
+                    }
+                }
+                if (state.places) {
+                    state.places.each { placeId, place ->
+                         if (settings["place${placeId}Person${personId}Sensor"]) hasOnlySleepSensor = false
+                    }
+                }
+                if (hasOnlySleepSensor == null) hasOnlySleepSensor = true
+            }
+            else hasOnlySleepSensor = true
+        }
+        else hasOnlySleepSensor = false
+    }
+    else hasOnlySleepSensor = false
+    return hasOnlySleepSensor
+}
+
 def updateAfterPersonNameEdit() {
     state.trips.each { tripId, trip ->
         def tripPeople = []
@@ -328,8 +362,8 @@ def addPerson(String id) {
     def currentMap = [place: currentPlaceMap, vehicle: currentVehicleMap, trip: currentTripMap]
     def previousMap = [place: previousPlaceMap, vehicle: previousVehicleMap, trip: previousTripMap]
     def life360Map = [address: null, latitude: null, longitude: null, placeIdAtAddress: null, placeIdWithName: null, placeIdAtCoordinates: null, atTime: null, isDriving: null]
-    def sleepMap = [presence: null, presenceAtTime: null, score: null, quality: null, sleepDataAtTime: null, winner: null, weekWinCount: null, weekWinner: null, monthWinCount: null, monthWinner: null]
-    def personMap = [current: currentMap, previous: previousMap, life360: life360Map, places: null, vehicles: null, sleep: sleepMap]
+    def sleepMap = [presence: null, presenceAtTime: null, score: null, quality: null, sleepDataAtTime: null, winner: false, weekWinCount: 0, weekWinner: false, monthWinCount: 0, monthWinner: false]
+    def personMap = [current: currentMap, previous: previousMap, life360: life360Map, places: null, vehicles: null, sleep: sleepMap, sleepOnlySensor: null]
         // so use like state.people.persondId.current.place.name
     state.people[id] = personMap
 }
@@ -344,8 +378,8 @@ def isWithinSleepDisplayWindow(String personId) {
     if (sleepLastUpdate) {
         def secsPassed = getSecondsSince(sleepLastUpdate)
         if (secsPassed <= getSleepMetricsDisplayMinsSetting()*60) inWindow = true
+        logDebug("Sleep display window ${inWindow ? "is valid" : "has passed"} with secsPassed = ${secsPassed} for personID: ${personId}")
     }
-    logDebug("Sleep display window ${inWindow ? "is valid" : "has passed"} with secsPassed = ${secsPassed}")
     return inWindow
 }
 
@@ -357,7 +391,7 @@ def isInBed(String personId) {
 
 def hasSleepSensor(String personId) {
     def hasSensor = false
-    if (settings["person${id}SleepSensor"]) hasSensor = true
+    if (settings["person${personId}SleepSensor"]) hasSensor = true
     return hasSensor
 }
 
@@ -828,7 +862,7 @@ String getIdOfVehicleWithName(String name) {
     for (id in state.vehicles) {
         if (settings["vehicle${id}Name"] == name) vehicleId = id
     }
-    log.warn "No Vehicle Found With the Name: ${name}"
+    if (vehicleId == null) log.warn "No Vehicle Found With the Name: ${name}"
     return vehicleId
 }
 
@@ -1202,6 +1236,7 @@ def initialize() {
     scheduleTimeTriggers()
     initializePresence()
     initializeSleep()
+  //  updateSleepCompetition()   // uncomment to debug sleep competition
     initializeSVGImages()
     initializeTrackers()
 }
@@ -1231,6 +1266,7 @@ def initializePlaces() {
 def initializeSleep() {
     if (state.people) {
         state.people.each { personId, person ->
+            state.people[personId]?.sleepOnlySensor = hasOnlySleepSensor(personId) 
             def sleepDevice = settings["person${personId}SleepSensor"]
             if (sleepDevice) {
                 if (!state.people[personId]?.sleep.presence) {
@@ -1239,12 +1275,12 @@ def initializeSleep() {
                 }
                 if (!state.people[personId]?.sleep.score) {
                     state.people[personId]?.sleep.score = sleepDevice.currentValue("sleepScore")
-                  //  state.people[personId]?.sleep.sleepDataAtTime = new Date().getTime()
+                    state.people[personId]?.sleep.sleepDataAtTime = new Date().getTime()
                 }
                 if (!state.people[personId]?.sleep.quality) {
                     state.people[personId]?.sleep.quality = sleepDevice.currentValue("sleepQuality")
-                  //  state.people[personId]?.sleep.sleepDataAtTime = new Date().getTime()
-                }
+                    state.people[personId]?.sleep.sleepDataAtTime = new Date().getTime()
+                }            
             }
         }
     }
@@ -1410,7 +1446,10 @@ def subscribePeople() {
 def life360CoordinatesHandler(evt) {    
     state.people?.each { personId, person ->
         if (isLife360DeviceForPerson(personId, evt.getDevice())) {
+            logDebug("Before update life360 from life360CoorinatesHandler, State of person per place is ${state.people[personId].places}")
             updateLife360(personId, evt.getDate().getTime())
+            logDebug("After update life360, State of person per place is ${state.people[personId].places}")
+            logDebug("Calling setPersonPlace from life360CoordinatesHandler")
             setPersonPlace(personId)
         }
     }
@@ -1437,15 +1476,27 @@ def updateLife360(String personId, timestamp) {
     state.people[personId]?.life360.atTime = timestamp
 }
 
-def sleepScoreHandler() {
+def sleepScoreHandler(evt) {
+    
+    def eventDevice = evt.getDevice()
+    def eventDate = evt.getDate()
+    def eventTime = eventDate.getTime()
+    def eventValue = evt.value
+    logDebug("In sleepScoreHandler with event: ${evt}. Device is ${eventDevice}. Date is ${eventDate}. Time is ${eventTime}. Event value is ${eventValue}")
     state.people?.each { personId, person ->
-        if (isSleepDeviceForPerson(personId, evt.getDevice())) {
-            state.people[personId]?.sleep.score = evt.value
-            state.people[personId]?.sleep.sleepDataAtTime = evt.getDate().getTime()
-            settings["person${personId}SleepSensor"].currentValue("sleepQuality")  // grab sleep quality on assumption that updated at the same time
+        def isSleepDeviceForPerson = isSleepDeviceForPerson(personId, eventDevice)
+        logDebug("Sleep Device for person ${personId} is ${isSleepDeviceForPerson}")
+        if (isSleepDeviceForPerson) {
+            state.people[personId]?.sleep.score = eventValue
+            state.people[personId]?.sleep.sleepDataAtTime = eventTime
+            def sleepQuality = settings["person${personId}SleepSensor"]?.currentValue("sleepQuality")
+            logDebug("Sleep data for person ${personId} is: score = ${eventValue}. quality = ${sleepQuality}")
+            if (sleepQuality) state.people[personId]?.sleep.quality = sleepQuality   // grab sleep quality on assumption that updated at the same time
             if (haveMultipleSleepSensors()) updateSleepCompetition()  
+           // logDebug("Updated sleep competition. Now update tracker.")
             updateTracker(personId)
-            schedule(getSleepMetricsDisplayMinsSetting(), clearSleepDisplay, [data: [personId: personId], overwrite: false])
+            def secsUntilClearSleep = (getSleepMetricsDisplayMinsSetting()*60) + 10 // add 10 second buffer to make sure clearing right after window passes
+            runIn(secsUntilClearSleep, clearSleepDisplay, [data: [personId: personId], overwrite: false])
         }
     }
 }
@@ -1472,32 +1523,42 @@ def bedPresenceHandler(evt) {
 
 def updateSleepCompetition() {
     // check if all sleep sensors have been updated today before competing 
+    logDebug("Updating Sleep Competition")
+    state.sleepCompetitionUpdating = true
     def allScoresUpdated = true
     def winner = [score: 0, personList: []] // list for ties
+    
+    def midnight = new Date().clearTime()
+    def midnightUtc = midnight.getTime()
     state.people?.each { personId, person ->
         if (hasSleepSensor(personId)) {
             def sleepDataAtTime = state.people[personId]?.sleep.sleepDataAtTime
-            if (sleepDataAtTime) {
-                def midnight = new Date().clearTime()
-                def midnightUtc = today.getTime()
+            if (sleepDataAtTime) {  
+              //  logDebug("sleepDataAtTime for person ${personId} is ${sleepDataAtTime}")
+                def scoreInt = person.sleep.score as Integer
+              //  logDebug("Cast sleep score to ${scoreInt} integer")
                 if (sleepDataAtTime < midnightUtc) {    // sleep data not updated today
                     allScoresUpdated = false
                 }
                 else {
-                    if (state.people[personId]?.sleep.score > winner.score) {
-                        winner = [score: state.people[personId]?.sleep.score, personList: [personId]]
+                    if (scoreInt && scoreInt > winner.score) {
+                     //   logDebug("Setting winner to person ${personId}")                       
+                        winner = [score: scoreInt, personList: [personId]]
                     }
-                    else if (state.people[personId]?.sleep.score == winner.score) {
+                    else if (scoreInt && scoreInt == winner.score) {
                         winner.personList.add(personId)
                     }
                 }
             }
-            else allScoresUpdated = false    // no sleep data at all yet
+            else {
+                allScoresUpdated = false    // no sleep data at all yet
+                logDebug("No sleep data yet for person ${personId}. Aborting update to sleep competition.")
+            }
         }
     }
-    
+  //  logDebug("allScoresUpdated value is ${allScoresUpdated}. Winner is person ${winner.personList}")
     if (allScoresUpdated) {
-        
+        logDebug("Setting competition winner")
         Calendar cal = Calendar.getInstance()
         cal.setTimeZone(location.timeZone)
         cal.setTime(new Date())
@@ -1509,8 +1570,8 @@ def updateSleepCompetition() {
         def isMonthStart = dayOfMonth == 1 ? true : false
         def isMonthEnd = dayOfMonth == lastDayOfMonth ? true : false
         
-        if (isWeekStart && getSecondsSince(state.weekSleepWinsLastCleared) > 86400) {
-            // make sure it's been at least 24 hours sinc cleared scores last, so that scores aren't cleared by a nap at the start of the week
+        if (isWeekStart) {
+            // make sure it's been at least 24 hours since cleared scores last, so that scores aren't cleared by a nap at the start of the week
             if (state.weekSleepWinsLastCleared) {
                if (getSecondsSince(state.weekSleepWinsLastCleared) > 86400) {
                    clearWeeklyWinCount() 
@@ -1518,21 +1579,22 @@ def updateSleepCompetition() {
             }
             else clearWeeklyWinCount()
         }
-        if (isMonthStart && getSecondsSince(state.monthSleepWinsLastCleared) > 86400) {
-            // make sure it's been at least 24 hours sinc cleared scores last, so that scores aren't cleared by a nap at the start of the month
+        if (isMonthStart) {
+            // make sure it's been at least 24 hours since cleared scores last, so that scores aren't cleared by a nap at the start of the month
             if (state.monthSleepWinsLastCleared) {
                 if (getSecondsSince(state.monthSleepWinsLastCleared) > 86400) {
                       clearMonthlyWinCount() 
                 }
             }
-            else clearWeeklyWinCount()
+            else clearMonthlyWinCount()
         }
     
         state.people?.each { personId, person ->
             if (winner.personList.contains(personId)) {
+              //  logDebug("Setting person ${personId} as the official winner of the sleep competition")
                 state.people[personId]?.sleep.winner = true
-                state.people[personId]?.sleep.weekWinCount++ 
-                state.people[personId]?.sleep.monthWinCount++ 
+                state.people[personId]?.sleep.weekWinCount = (state.people[personId]?.sleep.weekWinCount == null) ? 1 : state.people[personId]?.sleep.weekWinCount + 1
+                state.people[personId]?.sleep.monthWinCount = (state.people[personId]?.sleep.monthWinCount == null) ? 1 : state.people[personId]?.sleep.monthWinCount + 1
             }
             else state.people[personId]?.sleep.winner = false
             updateTracker(personId)
@@ -1541,10 +1603,10 @@ def updateSleepCompetition() {
         if (isWeekEnd) {
             def weekWinner = [winCount: 0, personList: []] // list for ties
             state.people?.each { personId, person ->
-                if (state.people[personId]?.sleep.weekWinCount > weekWinner.winCount) {
+                if (state.people[personId]?.sleep.weekWinCount && state.people[personId]?.sleep.weekWinCount > weekWinner.winCount) {
                         weekWinner = [winCount: state.people[personId]?.sleep.weekWinCount, personList: [personId]]
                 }
-                else if (state.people[personId]?.sleep.weekWinCount == weekWinner.winCount) {
+                else if (state.people[personId]?.sleep.weekWinCount && state.people[personId]?.sleep.weekWinCount == weekWinner.winCount) {
                     weekWinner.personList.add(personId)
                 }
            }
@@ -1561,10 +1623,10 @@ def updateSleepCompetition() {
         if (isMonthEnd) {
             def monthWinner = [winCount: 0, personList: []] // list for ties
             state.people?.each { personId, person ->
-                if (state.people[personId]?.sleep.monthWinCount > monthWinner.winCount) {
+                if (state.people[personId]?.sleep.monthWinCount && state.people[personId]?.sleep.monthWinCount > monthWinner.winCount) {
                         monthWinner = [winCount: state.people[personId]?.sleep.monthWinCount, personList: [personId]]
                 }
-                else if (state.people[personId]?.sleep.monthWinCount == monthWinner.winCount) {
+                else if (state.people[personId]?.sleep.monthWinCount && state.people[personId]?.sleep.monthWinCount == monthWinner.winCount) {
                     monthWinner.personList.add(personId)
                 }
            }
@@ -1703,8 +1765,9 @@ def isSwitchForPlace(String placeId, device) {
 
 def startTripPreCheckHandler(data) {
     def tripId = data.tripId
+    logDebug("In Start Trip Pre-Check for trip ${tripId}")
     if (areDepartureConditionsMet(tripId, true) && !hasTripStarted(tripId)) {
-        logDebug("Starting Trip Pre-Check for trip ${tripId}")
+        logDebug("Departure conditions met & trip has not started for trip ${tripId}")
         for (personName in settings["trip${tripId}People"]) {
             def personId = getIdOfPersonWithName(personName)
             if (!atDestinationOfTrip(personId, tripId)) {
@@ -1745,7 +1808,7 @@ def badTrafficNotification(String tripId) {
         def bestRoute = getBestRoute(tripId)
         if (bestRoute.relativeTrafficDelay > gettrafficDelayThresholdSetting()) {
             def trafficDelayMins = Math.round(bestRoute.relativeTrafficDelay / 60)
-            def trafficDelayStr = (trafficDelayMins == 1) ? trafficDelayMins.toString + " min" : trafficDelayMins.toString + " mins"
+            def trafficDelayStr = (trafficDelayMins == 1) ? trafficDelayMins.toString() + " min" : trafficDelayMins.toString() + " mins"
             settings["trip${tripId}BadTrafficPushDevices"].deviceNotification("Bad traffic on your trip from ${settings["trip${tripId}Origin"]} to ${settings["trip${tripId}Destination"]}. Allow ${trafficDelayStr} more than usual. Best route as of now is ${bestRoute.summary}, for ${bestRoute.eta} arrival.")
             
             settings["trip${tripId}BadTrafficSwitches"].each { theSwitch ->
@@ -1937,7 +2000,7 @@ def pushLateNotification(String tripId) {
             def targetArrival = toDateTime(settings["trip${tripId}TargetArrivalTime"])
             if (eta.after(targetArrival)) {
                 def secondsLate = getSecondsBetweenDates(targetArrival, eta)
-                def secsLateThreshold = settings["trip${tripId}LateNotificationMins"]*60
+                def secsLateThreshold = getLateNotificationMinsSetting(tripId)*60
                 if (secondsLate >= secsLateThreshold) {
                     for (personName in settings["trip${tripId}People"]) {
                         def personId = getIdOfPersonWithName(personName)
@@ -2132,7 +2195,9 @@ boolean didDepartOrigin(String personId, String tripId) {
                 
                 
 Boolean areDepartureConditionsMet(String tripId, Boolean isTripPreCheckIncluded=false) {
-    if (inDepartureWindow(tripId, isTripPreCheckIncluded) && !isRestricted()) return true
+    def isInDepartureWindow = inDepartureWindow(tripId, isTripPreCheckIncluded)
+    logDebug("Checking whether departure conditions are met for trip ${tripId}. isInDepartureWindow = ${isInDepartureWindow}")
+    if (isInDepartureWindow && !isRestricted()) return true
     else return false
 }
 
@@ -2344,22 +2409,25 @@ def setPersonPlace(String personId) {
     // ** set person's current/previous presence after per place presence updated in state in response to presence event **
     def placesPresent = []
     def lastChanged = null
-    logDebug("State of person per place is ${state.people[personId].places}")
+    
+    iterationCount++
+        logDebug("Iteration# ${iterationCount}: In setPersonPlace for personId " + personId)
+    logDebug("Iteration# ${iterationCount}: State of person per place is ${state.people[personId].places}")
     def placesList = []
     state.people[personId].places.each { placeId, presenceInfo ->
         placesList.add(placeId)
-        logDebug("Presence Info for person ${personId} at placeId ${placeId} is ${presenceInfo.presence}.")
+        logDebug("Iteration# ${iterationCount}: Presence Info for person ${personId} at placeId ${placeId} is ${presenceInfo.presence}.")
         if (presenceInfo.presence.equals("present")) {
-            logDebug("Adding placeId ${placeId} to placesPresent")
+            logDebug("Iteration# ${iterationCount}: Adding placeId ${placeId} to placesPresent")
             placesPresent.add(placeId)
         }
         if (lastChanged == null || state.people[personId].places[lastChanged].atTime == null) lastChanged = placeId
         else if (presenceInfo.atTime > state.people[personId].places[lastChanged].atTime) lastChanged = placeId
             
-        logDebug("Checking for last changed presence event. Presence info for placeId ${placeId} last updated at ${presenceInfo.atTime}. LatestChanged event considered so far was for placeId ${lastChanged} at ${state.people[personId].places[lastChanged].atTime}")
+        logDebug("Iteration# ${iterationCount}: Checking for last changed presence event. Presence info for placeId ${placeId} last updated at ${presenceInfo.atTime}. LatestChanged event considered so far was for placeId ${lastChanged} at ${state.people[personId].places[lastChanged].atTime}")
     }
-    logDebug("places list is ${placesList}")
-    logDebug("placeIds of places where present: ${placesPresent}. placeId of lastChanged: ${lastChanged}")
+    logDebug("Iteration# ${iterationCount}: places list is ${placesList}")
+    logDebug("Iteration# ${iterationCount}: placeIds of places where present: ${placesPresent}. placeId of lastChanged: ${lastChanged}")
     if (placesPresent.size() == 0) {
         // just left a place and not present at any other place that has a presence sensor. Set to life360 address if available, or else set to null to indicate presence is unknown
         
@@ -2368,7 +2436,7 @@ def setPersonPlace(String personId) {
         def placeIdAtAddress = state.people[personId].life360?.placeAtAddress
         def placeIdAtCoordinates = state.people[personId].life360?.placeAtCoordinates
         def placeIdWithName = state.people[personId].life360?.placeWithName
-        logDebug("No presence sensors of places present.")
+        logDebug("Iteration# ${iterationCount}: No presence sensors of places present.")
         if (placeIdWithName && didChangePlaceById(personId, placeIdWithName)) {
             changePersonPlaceById(personId, placeIdWithName)
         }
@@ -2393,35 +2461,35 @@ def setPersonPlace(String personId) {
         // either (i) just arrived at a place after not being present anywhere or (ii) just left a place after multiple presence sensors present
         
         // check if last presence sensor event was arrival or departure to detect case (i) or case (ii), respectively
-        logDebug("Person ${personId} Only present at 1 place")
+        logDebug("Iteration# ${iterationCount}: Person ${personId} Only present at 1 place")
         if (state.people[personId].places[lastChanged]?.presence.equals("present")) {
             // case (i)
-            logDebug("Presence at that place is the last presence event to occur")
+            logDebug("Iteration# ${iterationCount}: Presence at that place is the last presence event to occur")
             if (lastChanged != placesPresent[0]) logDebug("Mismatch from places presence sensor logic. Needs debugging.")
             
             if (state.people[personId].life360?.address != getNameOfPlaceWithId(placesPresent[0]) && state.people[personId].life360?.address !=  getPlaceAddressById(placesPresent[0])) {
-                log.warn "Mismatch in presence for ${getNameOfPersonWithId(personId)}. Life360 indicates presence at ${state.people[personId].life360?.address} but presence sensor indicates he or she is present at ${getNameOfPlaceWithId(placesPresent[0])}"
+                log.warn "Iteration# ${iterationCount}: Mismatch in presence for ${getNameOfPersonWithId(personId)}. Life360 indicates presence at ${state.people[personId].life360?.address} but presence sensor indicates he or she is present at ${getNameOfPlaceWithId(placesPresent[0])}"
             }
             // prioritize presence sensor presence over any life360 state, since presence sensor capable of combining info from multiple sources
             if (didChangePlaceById(personId, placesPresent[0])) {
-                logDebug("Place of presence has changed, so updating current place in person's state to placeId ${placesPresent[0]}")
+                logDebug("Iteration# ${iterationCount}: Place of presence has changed, so updating current place in person's state to placeId ${placesPresent[0]}")
                 changePersonPlaceById(personId, placesPresent[0])
             }
         }
         else if (state.people[personId].places[lastChanged]?.presence.equals("not present")) {
             // case (ii)    
-            log.warn "Check to see if presence sensor for placeId ${placesPresent[0]} is stuck."
+            log.warn "Iteration# ${iterationCount}: Check to see if presence sensor for placeId ${placesPresent[0]} is stuck."
             if (didChangePlaceById(personId, placesPresent[0])) {
-                logDebug("Place of presence has changed, so updating current place in person's state to placeId ${placesPresent[0]}")
+                logDebug("Iteration# ${iterationCount}: Place of presence has changed, so updating current place in person's state to placeId ${placesPresent[0]}")
                 changePersonPlaceById(personId, placesPresent[0])
              }
         }
     }
     else {
         // present at multiple places. Must resolve conflict between multiple presence sensors in the present state
-            log.warn "Present at multiple places, including placeIds ${placesPresent}. Setting presence to the last place where presence changed to present."
+            log.warn "Iteration# ${iterationCount}: Present at multiple places, including placeIds ${placesPresent}. Setting presence to the last place where presence changed to present."
             if (didChangePlaceById(personId, lastChanged)) {
-                logDebug("Place of presence has changed, so updating current place in person's state to placeId ${lastChanged}")
+                logDebug("Iteration# ${iterationCount}: Place of presence has changed, so updating current place in person's state to placeId ${lastChanged}")
                 changePersonPlaceById(personId, lastChanged)
              }
     }
@@ -2598,7 +2666,11 @@ def isLife360DeviceForPerson(String personId, device) {
 def life360AddressHandler(evt) {
     state.people?.each { personId, person ->
         if (isLife360DeviceForPerson(personId, evt.getDevice())) {
-            updateLife360(personId, evt.getDate().getTime())         
+            logDebug("Before update life360 from life360AddressHandler, State of person per place is ${state.people[personId].places}")
+            updateLife360(personId, evt.getDate().getTime()) 
+            logDebug("After update life360 from life360AddressHandler, State of person per place is ${state.people[personId].places}")
+            logDebug("Calling setPersonPlace from life360AddressHandler")
+            setPersonPlace(personId)
         }
     }
 }
@@ -2646,7 +2718,7 @@ def placePresenceSensorHandler(evt) {
             if (isPlaceDeviceForPerson(personId, placeId, evt.getDevice())) {
                 state.people[personId].places[placeId].atTime = evt.getDate().getTime()
                 state.people[personId].places[placeId].presence = evt.value
-                logDebug("Set state for personId ${personId} to have a presence value of '${evt.value}' at placeId ${placeId} as of ${evt.getDate().getTime()}.")
+                logDebug("Set state for personId ${personId} to have a presence value of '${evt.value}' at placeId ${placeId} as of ${evt.getDate().getTime()}. Calling setPersonPlace from placePresenceSensorHandler")
                 setPersonPlace(personId)
             }
         }
@@ -2667,7 +2739,7 @@ def TripsPage() {
             paragraph getInterface("header", " Manage Trips")
             if (state.trips) {
                 state.trips.each { tripId, trip ->
-                    paragraph '<table align=left border=0 margin=0 width=100%><tr><td align=center style:"width=50%;">' + formatImagePreview(getOriginIcon(tripId)) + '</td><td align=center style:"width=50%;">' + formatImagePreview(getDestinationIcon(tripId)) + '</td></tr><tr><td align=center style:"width=100%;" colspan=2><font style="font-size:20px;font-weight: bold">' + getNameOfTripWithId(tripId) + '</font></td></tr></table>', width: 4
+                    paragraph '<table align=left border=0 margin=0 width=100%><tr><td align=center style:"width=50%;">' + formatImagePreview(getOriginIcon(tripId)) + '</td><td align=center style:"width=50%;">' + formatImagePreview(getDestinationIcon(tripId)) + '</td></tr><tr><td align=center style:"width=100%;" colspan=2><font style="font-size:20px;font-weight: bold">' + getNameOfTripWithId(tripId) + '</font></td></tr><tr><td align=center style:"width=100%;" colspan=2><font style="font-size:15px;font-weight: normal">' + getDayStringOfTripWithId(tripId) + ' ' + getDepartureTimeOfTripWithId(tripId) + '</font></td></tr></table>', width: 4
                 }
                 paragraph getInterface("line", "")
             }
@@ -2687,7 +2759,7 @@ def TripsPage() {
             else if (state.editingTrip) {
                 input name: "tripToEdit", type: "enum", title: "Edit Trip:", options: getTripEnumList(), multiple: false, submitOnChange: true
                 if (tripToEdit) {
-                    def tripId = getIdOfTripWithName(tripToEdit)
+                    def tripId = getIdOfTripWithListName(tripToEdit)
                     if (tripId != null) {
                         state.editedTripId = tripId    // save the ID and name of the vehicle being edited in state
                         state.editedTripName = tripToEdit
@@ -2695,7 +2767,7 @@ def TripsPage() {
                     else {
                         // just edited the trip's origin or destination so that tripToEdit no longer holds the same trip name. Need to update that.
                         tripId = state.editedTripId
-                        def newTripName = getNameOfTripWithId(tripId)
+                        def newTripName = getListNameOfTripWithId(tripId)
                         app.updateSetting("tripToEdit",[type:"enum",value:newTripName]) 
                         state.editedTripName = newTripName
                     }
@@ -2804,11 +2876,39 @@ def getTripEnumList() {
     def list = []
     if (state.trips) {
         state.trips.each { tripId, trip ->
-            def tripName = getNameOfTripWithId(tripId)
+            def tripName = getListNameOfTripWithId(tripId)
             list.add(tripName)
         }
     }
     return list
+}
+
+
+def getTripDescriptionList() {
+    def list = ""
+    if (state.trips) {
+        state.trips.each { tripId, trip ->
+            def tripName = getListNameOfTripWithId(tripId)
+            list += tripName + "\n\t"
+        }
+    }
+    if (list != "" && list.length() > 4) list = list.substring(0, list.length() - 2)
+    return list
+}
+
+def getIdOfTripWithListName(name) {
+    def id = null
+    state.trips.each { tripId, trip ->
+        def tripName = getListNameOfTripWithId(tripId)
+        if (tripName == name) id = tripId
+    }
+    logDebug("Returning id = ${id} for trip list name ${name}")
+    if (id == null) log.warn "No Trip Found With the List Name: ${name}"
+    return id       
+}
+
+def getListNameOfTripWithId(tripId) {
+    return settings["trip${tripId}Origin"] + " to " + settings["trip${tripId}Destination"] + ': ' + getDayStringOfTripWithId(tripId) + ' ' + getDepartureTimeOfTripWithId(tripId)
 }
 
 def getIdOfTripWithName(name) {
@@ -2832,6 +2932,25 @@ def getNameOfTripWithId(String id) {
     return settings["trip${id}Origin"] + " to " + settings["trip${id}Destination"]
 }
 
+
+def getDepartureTimeOfTripWithId(String id) {
+    def dateObj = toDateTime(settings["trip${id}EarliestDepartureTime"])
+    def depTime = extractTimeFromDate(dateObj)
+    return depTime
+}
+
+def getDayStringOfTripWithId(String id) {
+    def days = ""
+    if (settings["trip${id}Days"].contains("Sunday")) days += "Sun"
+    if (settings["trip${id}Days"].contains("Monday")) days += (days == "") ? "Mon" : "-Mon"
+    if (settings["trip${id}Days"].contains("Tuesday")) days += (days == "") ? "Tue" : "-Tue"
+    if (settings["trip${id}Days"].contains("Wednesday")) days += (days == "") ? "Wed" : "-Wed"
+    if (settings["trip${id}Days"].contains("Thursday")) days += (days == "") ? "Thu" : "-Thu"
+    if (settings["trip${id}Days"].contains("Friday")) days += (days == "") ? "Fri" : "-Fri"
+    if (settings["trip${id}Days"].contains("Saturday")) days += (days == "") ? "Sat" : "-Sat"
+    return days
+}
+
 String getOrigin(String id) {
     return settings["trip${id}Origin"]
 }
@@ -2852,7 +2971,7 @@ String isPreferredRouteSet(String tripId) {
 }
 
 def deleteTrip(nameToDelete) {
-    def idToDelete = getIdOfTripWithName(nameToDelete)
+    def idToDelete = getIdOfTripWithListName(nameToDelete)
     if (idToDelete && state.trips) {       
         state.trips.remove(idToDelete)
         clearTripSettings(idToDelete)
@@ -2892,7 +3011,7 @@ def getCircleScaleSetting() {
 }
 
 def getAvatarScaleSetting() {
-    return (avatarScale) ? avatarScale : avatarScale
+    return (avatarScale) ? avatarScale : avatarScaleDefault
 }
 
 def getSleepMetricsDisplayMinsSetting() {
@@ -2905,9 +3024,12 @@ def getTextColorSetting() {
 }
                    
 Integer gettrafficDelayThresholdSetting() {
-    return (trafficDelayThreshold) ? trafficDelayThreshold : trafficDelayThresholdDefault             
+    return (trafficDelayThreshold) ? trafficDelayThreshold*60 : trafficDelayThresholdDefault*60             
 }
-
+                   
+Integer getLateNotificationMinsSetting(tripId) {
+    return (settings["trip${tripId}LateNotificationMins"]) ? settings["trip${tripId}LateNotificationMins"] : LateNotificationMinsDefault             
+}
 def getTimeFormatSetting() {
     return (timeFormat) ? timeFormat : timeFormatDefault
 }
@@ -2982,16 +3104,23 @@ def getSleepDataSvg(String personId) {
     def sleepData = getSleepData(personId)
     if (sleepData?.score) {
         def sleepColor = "black"
+        logDebug("Sleep quality: " + sleepData?.quality)
         if (sleepData?.quality == "Restless") sleepColor = "#ee6c5c"  // red
         else if (sleepData?.quality == "Average") sleepColor = "#f2b14d"       // orange
         else if (sleepData?.quality == "Restful") sleepColor = "#73d49f"   // green
-
+        logDebug("Sleep color: " + sleepColor)
+            
+        def coloredSleep = state.images.sleep["Moon"]
+        def colored = coloredSleep.replace("currentColor",sleepColor)
+        
+      //  logDebug("colored sleep svg is ${groovy.xml.XmlUtil.escapeXml(colored)}")
+            
         svg += '<svg width="20" height="38" z-index="1" x="5" y="-7" viewBox="0 0 20 20" overflow="visible" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">'
         svg += '<style>'
         svg += '.moon {fill:' + sleepColor + '}'
         svg += '</style>'
-        svg += '<g class="moon">'
-        svg += state.images.sleep["Moon"]
+        svg += '<g style="path { fill:' + sleepColor + '}">'
+        svg += colored
         svg += '</g>'
         svg += '<text x="14" y="9" alignment-baseline="middle" style="font:bold 11px Oswald,sans-serif;" text-anchor="middle" fill="' + getTextColorSetting() + '">' + sleepData?.score + '</text>'
         if (sleepData.winner) {
@@ -3001,7 +3130,7 @@ def getSleepDataSvg(String personId) {
         }
         svg += '</svg>'
    }   
-    logDebug("svg is ${groovy.xml.XmlUtil.escapeXml(svg)}")
+ //   logDebug("sleep svg is ${groovy.xml.XmlUtil.escapeXml(svg)}")
     return svg
 }
 
@@ -3047,28 +3176,34 @@ def fetchTracker() {
     svg +=     '</mask>'
     svg += '</defs>'
     
-    if (trackerType == 'svg') {
-        svg += '<svg x="20" width="80" height="80" z-index="1">'
-        svg += state.images.people[personId]
-        svg += '</svg>'
+    def isInSleepWindow = isWithinSleepDisplayWindow(personId)
+    
+    if (!state.people[personId]?.sleepOnlySensor || (state.people[personId]?.sleepOnlySensor && isInSleepWindow)) {
         
-        if (isWithinSleepDisplayWindow(personId)) {
-            svg += getSleepDataSvg(personId) 
-        }
-        def sleepData = getSleepData(personId)
-        if (sleepData.monthWinner) {            // display monthly trophy the whole day, irrespective of whether only in sleep display window
-            svg += '<svg x="90" y="-12" width="25" height="50" z-index="1">'
-            svg += state.images.sleep["Month Trophy"]
+        if (trackerType == 'svg') {
+            svg += '<svg x="20" width="80" height="80" z-index="1">'
+            svg += state.images.people[personId]
             svg += '</svg>'
-        }
-        else if (sleepData.weekWinner) {            // display weekly trophy the whole day, irrespective of whether only in sleep display window
-            svg += '<svg x="90" y="-12" width="25" height="50" z-index="1">'
-            svg += state.images.sleep["Week Trophy"]
-            svg += '</svg>'
+        
+            if (isInSleepWindow) {
+                svg += getSleepDataSvg(personId) 
+            }
+            def sleepData = getSleepData(personId)
+            if (sleepData.monthWinner) {            // display monthly trophy the whole day, irrespective of whether only in sleep display window
+                svg += '<svg x="90" y="-12" width="25" height="50" z-index="1">'
+                svg += state.images.sleep["Month Trophy"]
+                svg += '</svg>'
+            }
+            else if (sleepData.weekWinner) {            // display weekly trophy the whole day, irrespective of whether only in sleep display window
+                svg += '<svg x="90" y="-12" width="25" height="50" z-index="1">'
+                svg += state.images.sleep["Week Trophy"]
+                svg += '</svg>'
+            }
         }
     }
     
-    if (state.people[personId]?.current.trip.id != null) {
+    
+    if (!state.people[personId]?.sleepOnlySensor && state.people[personId]?.current.trip.id != null) {
     // show current trip
            
         def tripId = state.people[personId]?.current.trip.id
@@ -3129,23 +3264,23 @@ def fetchTracker() {
                 def targetArrival = toDateTime(target)
                 if (etaDate.after(targetArrival)) {
                     def secondsLate = getSecondsBetweenDates(targetArrival, etaDate)
-                    def secsLateThreshold = settings["trip${tripId}LateNotificationMins"]*60
+                    def secsLateThreshold = getLateNotificationMinsSetting(tripId)*60
                     if (secondsLate >= secsLateThreshold) lateAlert = true
                 }
             }
-            svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="60" y="' + (50+yOffset) + '" class="large" fill="' + ((lateAlert) ? " red" : "black") + '">' + extractTimeFromDate(etaDate) + '</text>'
+            svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="60" y="' + (55+yOffset) + '" class="large" fill="' + ((lateAlert) ? " red" : "black") + '">' + extractTimeFromDate(etaDate) + '</text>'
         }
         else {
             // otherwise display expected duration of trip
             svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="100" y="' + (trackerType == 'svg' ? '45' : '-20') + '" class="small"  fill="' + ((routeAlert) ? " red" : "black") + '">' + formatTimeMins(bestRoute.duration) + '</text>'
 
                if (!isPreferredRouteSet || (isPreferredRouteSet && !isPreferred) || (isPreferredRouteSet && isPreferred && getIsPreferredRouteDisplayedSetting())) {
-                   svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="60" y="' + (50+yOffset) + '" class="small" fill="' + ((routeAlert) ? " red" : "black") + '">' + bestRoute.summary + '</text>'
+                   svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="60" y="' + (55+yOffset) + '" class="small" fill="' + ((routeAlert) ? " red" : "black") + '">' + bestRoute.summary + '</text>'
 
                }      
            }
     }
-     else { 
+     else if (!state.people[personId]?.sleepOnlySensor) { 
          def isPostArrival = isInPostArrivalDisplayWindow(personId)
          // in post arrival display window for a period of time after arrive at the destination of a trip, as long as the person is still at that destination.
          if (isPostArrival) {
@@ -3174,14 +3309,16 @@ def fetchTracker() {
                   def targetArrival = toDateTime(target)
                   if (arrivalDateTime.after(targetArrival)) {
                       def secondsLate = getSecondsBetweenDates(targetArrival, arrivalDateTime)
-                      def secsLateThreshold = settings["trip${tripId}LateNotificationMins"]*60
+                      def secsLateThreshold = getLateNotificationMinsSetting(tripId)*60
                       if (secondsLate >= secsLateThreshold) lateAlert = true
                   }
               }
-             svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="60" y="' + (50+yOffset) + '" class="large" fill="' + ((lateAlert) ? " red" : "black") + '">' + extractTimeFromDate(arrivalDateTime) + '</text>'
+             svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="60" y="' + (55+yOffset) + '" class="large" fill="' + ((lateAlert) ? " red" : "black") + '">' + extractTimeFromDate(arrivalDateTime) + '</text>'
          }
          else if (placeOfPresenceById == null && placeOfPresenceByName != null) {
-             svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="60" y="' + (50+yOffset) + '" class="small" fill="black">' + placeOfPresenceByName + '</text>' 
+           //  svg += '<rect height="10" width="120" x="60" y="' + (55+yOffset) + '" style="fill:black"/>'
+             svg += '<text height="10" width="120" text-align="center" text-anchor="middle" x="60" y="' + (55+yOffset) + '" class="small">' + placeOfPresenceByName + '</text>'
+             
          }
      }
      svg += '</svg>'
@@ -3198,8 +3335,8 @@ def getPresenceIcon(String personId, trackerType=null) {
     
     // generally, prioritize showing presence in bed, then vehicle, then place. Except when in post arrival display window, which is handled below
     if (isInBed) presenceIcon = trackerType == 'svg' ? state.images.sleep["Bed"] : getPathOfStandardIcon("Bed", "Sleep")
-    else if (vehicleIdPresentIn != null) presenceIcon = trackerType == 'svg' ? state.images.vehicles[vehicleIdPresentIn] : getVehicleIconById(vehicleIdPresentIn)
-    else if (placeOfPresenceById != null) presenceIcon = trackerType == 'svg' ? state.images.places[placeOfPresenceById] : getPlaceIconById(placeOfPresenceById) 
+    else if (placeOfPresenceById != null) presenceIcon = trackerType == 'svg' ? state.images.places[placeOfPresenceById] : getPlaceIconById(placeOfPresenceById)    
+    else if (vehicleIdPresentIn != null) presenceIcon = trackerType == 'svg' ? state.images.vehicles[vehicleIdPresentIn] : getVehicleIconById(vehicleIdPresentIn)     
     else presenceIcon = trackerType == 'svg' ? state.images.places["Generic"] : getPathOfStandardIcon("Generic", "Places")
     
     def isPostArrival = isInPostArrivalDisplayWindow(personId)
@@ -3261,10 +3398,11 @@ def updateTracker(String personId) {
     }
     else if (trackerType == 'html') {
         logDebug("Outputing HTML version of tracker")
+      //  content += '<head><meta http-equiv="refresh" content="10"></head>'
         content += '<style>'
-        content += 'body { margin: 0; }'
-        content += '.tracker { width: 100%; padding-top: 100%; position:relative; display:block;'
-        content +=            'background-repeat: no-repeat;'
+        content += 'body { margin: 0; vertical-align: top; }'
+        content += '.tracker { width: 100%; padding-top: 100%; vertical-align: top; position:relative; display:block;'
+        content +=            'background-repeat: no-repeat; '
 
         def isInSleepWindow = isWithinSleepDisplayWindow(personId)
         def sleepData = getSleepData(personId)
@@ -3284,66 +3422,91 @@ def updateTracker(String personId) {
         if (isMonthWinner) trophy = "Month Trophy"
         else if (isWeekWinner) trophy = "Week Trophy"
         
-        if (tripId != null) {
-            content +=            'background-position:'
-            if (isInSleepWindow && isWinner) content += 'top 18% left 4%, top 25% right 8%,'
-            else if (isInSleepWindow) content += 'top 18% left 4%,'
-            else if (isWinner) content += 'top 25% right 8%,'
-            content +=            'bottom 24% right 7.5%, bottom 24% left 8%, bottom 0% right 50%, center;'
-            content +=            'background-size:'
-            if (isInSleepWindow && isWinner) content += '20%,20%,'
-            else if (isInSleepWindow) content += '20%,'
-            else if (isWinner) content += '20%,'
-            content +=            '21%, 21%, 100% auto,' + avatarSize + '%;'
-            content +=            'background-image:'
-            if (isInSleepWindow && isWinner) {
-                content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
-                content += 'url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'
+        logDebug("isInSleepWindow: ${isInSleepWindow} isWinner: ${isWinner} for personID: ${personId}")
+        
+        if (state.people[personId]?.sleepOnlySensor) {
+            if (isInSleepWindow) {
+                content +=            'background-position:'
+                if (isWinner) content += 'top 18% left 4%, top 25% right 8%,'
+                else content += 'top 18% left 4%,'
+                content +=            'center;'
+                content +=            'background-size:'
+                if (isWinner) content += '20%,20%,'
+                else  content += '20%,'
+                content +=            avatarSize + '%;'
+                content +=            'background-image:'
+                if (isWinner) {
+                    content += 'url("' + getSleepTrackerEndpoint(personId) + '&version='
+                    content += state.refreshNum + '"), url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'
+                }
+                else  {
+                    content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
+                }              
+                content +=            'url("' + personAvatar + '");'       
             }
-            else if (isInSleepWindow) {
-                content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
-            }
-            else if (isWinner) {
-                content += 'url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'  
-            }
-            content +=            'url("' + destinationIcon + '"),'
-            content +=            'url("' + presenceIcon + '"),'
-            content +=            'url("' + trackerUrl + '"),' 
-            content +=            'url("' + personAvatar + '");'
         }
         else {
-            content +=            'background-position:'
-            if (isInSleepWindow && isWinner) content += 'top 18% left 4%, top 25% right 8%,'
-            else if (isInSleepWindow) content += 'top 18% left 4%,'
-            else if (isWinner) content += 'top 25% right 8%,'
-            content +=            'bottom 24% right 7.5%, bottom 0% right 50%, center;'
-            content +=            'background-size:'
-            if (isInSleepWindow && isWinner) content += '20%,20%,'
-            else if (isInSleepWindow) content += '20%,'
-            else if (isWinner) content += '22%,'
-            content +=            '21%, 100% auto,' + avatarSize + '%;'
-            content +=            'background-image:'
-             if (isInSleepWindow && isWinner) {
-                content += 'url("' + getSleepTrackerEndpoint(personId) + '&version='
-                content += state.refreshNum + '"), url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'
+            if (tripId != null) {
+                content +=            'background-position:'
+                if (isInSleepWindow && isWinner) content += 'top 18% left 4%, top 25% right 8%,'
+                else if (isInSleepWindow) content += 'top 18% left 4%,'
+                else if (isWinner) content += 'top 25% right 8%,'
+                content +=            'bottom 24% right 7.5%, bottom 24% left 8%, bottom 0% right 50%, center;'
+                content +=            'background-size:'
+                if (isInSleepWindow && isWinner) content += '20%,20%,'
+                else if (isInSleepWindow) content += '20%,'
+                else if (isWinner) content += '20%,'
+                content +=            '21%, 21%, 100% auto,' + avatarSize + '%;'
+                content +=            'background-image:'
+                if (isInSleepWindow && isWinner) {
+                    content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
+                    content += 'url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'
+                }
+                else if (isInSleepWindow) {
+                    content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
+                }
+                else if (isWinner) {
+                    content += 'url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'  
+                }
+                content +=            'url("' + destinationIcon + '"),'
+                content +=            'url("' + presenceIcon + '"),'
+                content +=            'url("' + trackerUrl + '"),' 
+                content +=            'url("' + personAvatar + '");'
             }
-            else if (isInSleepWindow) {
-                content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
-            }
-            else if (isWinner) {
-                content += 'url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'  
-            }               
-            content +=            'url("' + presenceIcon + '"),'
-            content +=            'url("' + trackerUrl + '"),'
-            content +=            'url("' + personAvatar + '");'   
+            else {
+                content +=            'background-position:'
+                if (isInSleepWindow && isWinner) content += 'top 18% left 4%, top 25% right 8%,'
+                else if (isInSleepWindow) content += 'top 18% left 4%,'
+                else if (isWinner) content += 'top 25% right 8%,'
+                content +=            'bottom 24% right 7.5%, bottom 0% right 50%, center;'
+                content +=            'background-size:'
+                if (isInSleepWindow && isWinner) content += '20%,20%,'
+                else if (isInSleepWindow) content += '20%,'
+                else if (isWinner) content += '22%,'
+                content +=            '21%, 100% auto,' + avatarSize + '%;'
+                content +=            'background-image:'
+                 if (isInSleepWindow && isWinner) {
+                    content += 'url("' + getSleepTrackerEndpoint(personId) + '&version='
+                    content += state.refreshNum + '"), url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'
+                }
+                else if (isInSleepWindow) {
+                    content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
+                }
+                else if (isWinner) {
+                    content += 'url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'  
+                }               
+                content +=            'url("' + presenceIcon + '"),'
+                content +=            'url("' + trackerUrl + '"),'
+                content +=            'url("' + personAvatar + '");'   
 
+            }
         }
         content += '}'
         content += '</style>'
         content += '<div class="tracker">'
         content += '</div>'
     }
-    logDebug("html is ${groovy.xml.XmlUtil.escapeXml(content)}")
+  //  logDebug("html is ${groovy.xml.XmlUtil.escapeXml(content)}")
     def tracker = getTracker(personId)
     if (tracker) {
         tracker.sendEvent(name: 'tracker', value: content, displayed: true, isStateChange: true)   
@@ -3357,13 +3520,27 @@ def updateTracker(String personId) {
             def bestRoute = getBestRoute(tripId)
             if (bestRoute.relativeTrafficDelay > gettrafficDelayThresholdSetting()) {
                 def durationMins = Math.round(bestRoute.duration / 60)
-                def durationStr = (durationMins == 1) ? durationMins.toString + " min" : durationMins.toString + " mins"
+                def durationStr = (durationMins == 1) ? durationMins.toString() + " min" : durationMins.toString() + " mins"
                 tracker.sendEvent(name: 'travelAlert', value: "${settings["trip${tripId}Origin"]} to ${settings["trip${tripId}Destination"]}: ${durationStr}. Take ${bestRoute.summary}, for ${bestRoute.eta} arrival.")
             }
             else tracker.sendEvent(name: 'travelAlert', value: "No Travel Alert")
         }
         else tracker.sendEvent(name: 'travelAlert', value: "No Travel Alert")
     }
+}
+
+def fetchHTMLTracker() {
+    logDebug("Fetching HTML Tracker")
+    def personId = params.personId
+    
+    if(!state.people.containsKey(personId)) return null
+    
+    def tracker = getTracker(personId)
+    if (!tracker) return null
+    def trackerValue = tracker.currentValue("tracker")
+    render contentType: "text/html", data: trackerValue, status: 200
+
+
 }
 
 def getInterface(type, txt="", link="") {
