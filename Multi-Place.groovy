@@ -1,7 +1,7 @@
 
 /**
  * Multi-Place
- * v1.01-beta
+ * v1.0.0 - Initial Release
 
  *
  * Copyright 2020 Justin Leonard
