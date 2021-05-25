@@ -80,7 +80,7 @@ For the time being, Multi-Place is licensed under a modified Creative Commons li
 
 <br>
 <b>Hubitat Package Manager Install Instructions</b><br>
-0. Find Multi-Place under the tags "Vehicles & Transportation", "Sleep", or "Presence & Location"
+0. Find Multi-Place under the tags "Vehicles & Transportation", "Sleep", or "Presence & Location"<br>
 1. Install Multi-Place Package via Hubitat Package Manager<br>
 2. Follow the install instructions in the Multi-Place app<br>
 
