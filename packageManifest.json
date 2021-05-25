@@ -1,0 +1,26 @@
+{
+  "packageName": "Multi-Place",
+  "author": "Justin Leonard",
+  "version": "1.0",
+  "minimumHEVersion": "1.0",
+  "dateReleased": "2021-05-25",
+  "apps": [
+    {
+      "id": "1491ad41-e8dc-4a5a-a6ef-0b5b00ef8313",
+      "name": "Multi-Place",
+      "namespace": "lnjustin",
+      "location": "https://raw.githubusercontent.com/lnjustin/Multi-Place/master/Multi-Place.groovy",
+      "required": true,
+      "oauth": true
+    }
+  ],
+  "drivers": [
+    {
+      "id": "a654027e-43ea-4e74-8a66-43e77b934abc",
+      "name": "Multi-Place Tracker",
+      "namespace": "lnjustin",
+      "location": "https://raw.githubusercontent.com/lnjustin/Multi-Place/master/Multi-Place-Tracker.groovy",
+      "required": true
+    }
+  ]
+}
