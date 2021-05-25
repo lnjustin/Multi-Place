@@ -106,7 +106,7 @@ def header() {
 }
 
 def footer() {
-    paragraph getInterface("line", "") + '<div style="display: block;margin-left: auto;margin-right: auto;text-align:center"><img width="25px" border="0" src="' + getLogoPath() + '"> &copy; 2020 Justin Leonard.<br>' + getInterface("link", "Readme. Attribution.", "https://github.com/lnjustin/Multi-Place/blob/master/README.md") + getInterface("link", " License.", "https://github.com/lnjustin/Multi-Place/blob/master/License")
+    paragraph getInterface("line", "") + '<div style="display: block;margin-left: auto;margin-right: auto;text-align:center"><img width="25px" border="0" src="' + getLogoPath() + '"> &copy; 2020 Justin Leonard.<br>' + getInterface("link", "Readme. Attribution.", "https://github.com/lnjustin/Multi-Place/blob/master/README.md") + getInterface("link", " License.", "https://github.com/lnjustin/Multi-Place/blob/master/License.md")
 }
 
 def mainPage() {
