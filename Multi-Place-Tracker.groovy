@@ -1,7 +1,7 @@
 /**
  * Multi-Place Tracker
  *
- * V 1.0-beta1
+ * V 1.0.0
  *
  * Copyright 2020 Justin Leonard
  *
