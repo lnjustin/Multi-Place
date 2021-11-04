@@ -1,7 +1,7 @@
 
 /**
  * Multi-Place
- * v1.0.0 - Initial Release
+ * v1.01-beta
 
  *
  * Copyright 2020 Justin Leonard
@@ -84,6 +84,7 @@ def getSleepTrackerEndpoint(String personId) {
 preferences {
      page name: "mainPage", title: "", install: true, uninstall: true
      page name: "PeoplePage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
+     page name: "PeopleAccessoryPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
      page name: "VehiclesPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
      page name: "PlacesPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
      page name: "TripsPage", title: "", install: false, uninstall: false, nextPage: "mainPage" 
@@ -120,11 +121,13 @@ def mainPage() {
                 paragraph getInterface("header", " Core Setup")
                 if (state.people) {
                     href(name: "PeoplePage", title: getInterface("boldText", "People"), description: getPeopleDescription(), required: false, page: "PeoplePage", image: checkMark)
+                    href(name: "PeopleAccessoryPage", title: getInterface("boldText", "People Accessories"), description: "Manage Accessories for People", required: false, page: "PeopleAccessoryPage", image: (state.accessories && state.accessories.size() > 0 ? checkMark : xMark))
                     href(name: "VehiclesPage", title: getInterface("boldText", "Vehicles"), description: (state.vehicles ? getVehiclesDescription() : "Click to Add Vehicles"), required: false, page: "VehiclesPage", image: (state.vehicles ? checkMark : xMark))
                     href(name: "PlacesPage", title: getInterface("boldText", "Places"), description: (state.places ? getPlacesDescription() : "Click to Add Places"), required: false, page: "PlacesPage", image: (state.places ? checkMark : xMark))
                 }
                 else {
                     href(name: "PeoplePage", title: getInterface("boldText", "People"), description: "Add a person to get started.", required: false, page: "PeoplePage", image: xMark)
+                    href(name: "PeopleAccessoryPage", title: getInterface("boldText", "People Accessories"), description: "Add at least one person before managing accessories for people", required: false, page: "", image: xMark)
                     href(name: "VehiclesPage", title: getInterface("boldText", "Vehicles"), description: "Add at least one person before managing vehicles.", required: false, page: "", image: xMark)
                     href(name: "PlacesPage", title: getInterface("boldText", "Places"), description: "Add at least one person before managing places.", required: false, page: "", image: xMark)
                 }
@@ -217,6 +220,11 @@ def PeoplePage() {
                         input name: "place${placeId}Person${state.lastPersonID}Sensor", type: "capability.presenceSensor", title: "${settings["place${placeId}Name"]} Presence Sensor", description: "Presence Sensor for this person's presence at " + settings["place${placeId}Name"], submitOnChange: true, multiple: false, required: false
                     }
                 }
+                input name: "person${state.lastPersonID}Stars", type: "bool", title: "Track Stars?", submitOnChange: true, required: true
+                if (settings["person${state.lastPersonID}Stars"] == true) {
+                   input name: "person${state.lastPersonID}NumStars", type: "number", title: "Num Stars?", submitOnChange: false, required: true
+                   input name: "person${state.lastPersonID}StarColor", type: "enum", options: ["Blue", "Red", "Yellow"], title: "Select Star Color", submitOnChange: false, required: true
+                }
                 paragraph "<br>"
                 input name: "submitNewPerson", type: "button", title: "Submit", width: 3
                 input name: "cancelAddPerson", type: "button", title: "Cancel", width: 3
@@ -271,6 +279,11 @@ def PeoplePage() {
                         state.places.each { placeId, place ->
                             input name: "place${placeId}Person${id}Sensor", type: "capability.presenceSensor", title: "${settings["place${placeId}Name"]} Presence Sensor", description: "Presence Sensor for this person's presence at " + settings["place${placeId}Name"], submitOnChange: true, multiple: false, required: false
                         }
+                    }
+                    input name: "person${id}Stars", type: "bool", title: "Track Stars?", submitOnChange: true, required: true
+                    if (settings["person${id}Stars"] == true) {
+                        input name: "person${id}NumStars", type: "number", title: "Num Stars?", submitOnChange: false, required: true
+                        input name: "person${id}StarColor", type: "enum", options: ["Blue", "Red", "Yellow"], title: "Select Star Color", submitOnChange: false, required: true
                     }
                     paragraph "<br>"
                     input name: "submitEditPerson", type: "button", title: "Done", width: 3
@@ -363,7 +376,9 @@ def addPerson(String id) {
     def previousMap = [place: previousPlaceMap, vehicle: previousVehicleMap, trip: previousTripMap]
     def life360Map = [address: null, latitude: null, longitude: null, placeIdAtAddress: null, placeIdWithName: null, placeIdAtCoordinates: null, atTime: null, isDriving: null]
     def sleepMap = [presence: null, presenceAtTime: null, score: null, quality: null, sleepDataAtTime: null, winner: false, weekWinCount: 0, weekWinner: false, monthWinCount: 0, monthWinner: false]
-    def personMap = [current: currentMap, previous: previousMap, life360: life360Map, places: null, vehicles: null, sleep: sleepMap, sleepOnlySensor: null]
+    def starsMap = [earned:null, completedCount: null, earnedToday: null]
+    def accessoryMap = [earned: [], active:[]]
+    def personMap = [current: currentMap, previous: previousMap, life360: life360Map, places: null, vehicles: null, sleep: sleepMap, sleepOnlySensor: null, stars: starsMap, accessories:accessoryMap]
         // so use like state.people.persondId.current.place.name
     state.people[id] = personMap
 }
@@ -512,10 +527,425 @@ def clearPersonSettings(String personId) {
     
 }
 
+def formatAccessoryPreview(accessoryId, personId = null) {
+    if (personId == null) return '<div><img width="140px" border="0" style="max-width:140px" src="' + settings["accessory${accessoryId}Path"] + '"></div>'   
+    else {
+        def content = ''
+        content += '<style>'
+        content += 'body { margin: 0; vertical-align: top; }'
+        content += '.tracker' + personId + ' { width: 100%; padding-top: 100%; vertical-align: top; position:relative; display:block;'
+        content +=            'background-repeat: no-repeat; '
+
+        def avatarSize = (getAvatarScaleSetting() / 100) *65
+        
+        content +=            'background-position:'
+        def accessory = getAccessory(accessoryId)
+        if (accessory.people[personId]?.top) content += "top ${accessory.people[personId]?.top ? accessory.people[personId]?.top : 0}% "
+        else if (accessory.people[personId]?.bottom) content += "bottom ${accessory.people[personId]?.bottom ? accessory.people[personId]?.bottom : 0}% "
+        if (accessory.people[personId]?.left) content += "left ${accessory.people[personId]?.left ? accessory.people[personId]?.left : 0}%,"
+        else if (accessory.people[personId]?.right) content += "right ${accessory.people[personId]?.right ? accessory.people[personId]?.right : 0}%,"
+        content +=            'center;'
+        content +=            'background-size:'
+        content += "${accessory.people[personId]?.scale ? accessory.people[personId]?.scale : 0}%,"  
+        content +=            avatarSize + '%;'
+        content +=            'background-image:' 
+        content += 'url("' + accessory.path + '"),'             
+        content +=            'url("' + getPersonAvatar(personId) + '");'       
+        content += '}'
+        content += '</style>'
+        content += '<div class="tracker' + personId + '">'
+        content += '</div>'  
+        return content
+    }
+}
+
+def clearAccessorySettings(accessoryId) {
+    app.removeSetting("accessory${accessoryId}Name")
+    app.removeSetting("accessory${accessoryId}Category")
+    app.removeSetting("accessory${accessoryId}Path")
+    app.removeSetting("accessory${accessoryId}NumStarsRequired")
+     if (state.people) {
+          state.people.each { id, person ->
+              app.removeSetting("accessory${accessoryId}TopPerson${id}")
+              app.removeSetting("accessory${accessoryId}BottomPerson${id}")
+              app.removeSetting("accessory${accessoryId}LeftPerson${id}")
+              app.removeSetting("accessory${accessoryId}RightPerson${id}")
+              app.removeSetting("accessory${accessoryId}ScalePerson${id}")
+              app.removeSetting("isAccessory${accessoryId}EarnedByPerson${id}")             
+              app.removeSetting("isNextAccessory${accessoryId}ForPerson${id}")
+          }
+     }
+}
+
+def PeopleAccessoryPage() {
+    dynamicPage(name: "PeopleAccessoryPage") {
+        section() {
+            header()
+                paragraph getInterface("header", " Manage People Accessories")
+                if (state.accessories) {
+                    for (id in state.accessories) {
+                        paragraph '<table width="80%"><tr><td align="center"><font style="font-size:20px;font-weight: bold">' + formatAccessoryPreview(id) + settings["accessory${id}Name"] + '</font></td></tr></table>', width:3
+                    }
+                    paragraph getInterface("line", "")
+                }
+                
+            if (state.addingAccessory) {
+                paragraph getInterface("subHeader", " Add Accessory")                
+                    input name: "accessory${state.lastAccessoryID}Name", type: "text", title: "Unique Name", submitOnChange: false, required: true
+                    input name: "accessory${state.lastAccessoryID}Category", type: "text", title: "Category", description: "Existing categories: ${getAccessoryCategoryEnumList()}", submitOnChange: false, required: true
+                    input name: "accessory${state.lastAccessoryID}Path", type: "text", title: "Accessory Image Path", submitOnChange: true, required: true
+                    input name: "accessory${state.lastAccessoryID}NumStarsRequired", type: "number", title: "Number of Stars to Earn Accessory", submitOnChange: false, required: true
+                
+                     if (state.people) {
+                         state.people.each { id, person ->
+                              paragraph '<div width="100%" align="center"><font style="font-size:20px;font-weight: bold">' + formatAccessoryPreview(state.lastAccessoryID, id) + settings["person${id}Name"] + '</font></div>', width:12
+
+                              input name: "accessory${state.lastAccessoryID}TopPerson${id}", type: "text", title: "Top % Alignment", submitOnChange: true, required: false, width: 3
+                              input name: "accessory${state.lastAccessoryID}BottomPerson${id}", type: "text", title: "Bottom % Alignment", submitOnChange: true, required: false, width: 3
+                              input name: "accessory${state.lastAccessoryID}LeftPerson${id}", type: "text", title: "Left % Alignment", submitOnChange: true, required: false, width: 3
+                              input name: "accessory${state.lastAccessoryID}RightPerson${id}", type: "text", title: "Right % Alignment", submitOnChange: true, required: false, width: 3
+                              input name: "accessory${state.lastAccessoryID}ScalePerson${id}", type: "text", title: "Scale %", submitOnChange: true, required: false, width: 3
+                        
+                              input name: "isAccessory${state.lastAccessoryID}EarnedByPerson${id}", type: "bool", title: "Is accessory already earned by ${settings["person${id}Name"]}?", submitOnChange: false, required: false, width: 3
+                              input name: "isAccessory${state.lastAccessoryID}ActiveForPerson${id}", type: "bool", title: "Is accessory active for ${settings["person${id}Name"]}?", submitOnChange: false, required: false, width: 3
+
+                             input name: "isNextAccessory${state.lastAccessoryID}ForPerson${id}", type: "bool", title: "Set as next accessory to be earned for ${settings["person${id}Name"]}?", submitOnChange: false, required: false, width: 3
+                          }
+                      }   
+                paragraph "<br>"
+                input name: "submitNewAccessory", type: "button", title: "Submit", width: 3
+                input name: "cancelAddAccessory", type: "button", title: "Cancel", width: 3
+            }
+            else if (state.deletingAccessory) {
+                paragraph getInterface("subHeader", " Delete Accessory")
+                input name: "accessoryToDelete", type: "enum", title: "Accessory to Delete:", options: getAccessoriesEnumList(), multiple: false, submitOnChange: true
+                if (accessoryToDelete) input name: "submitDeleteAccessory", type: "button", title: "Confirm Delete", width: 3
+                input name: "cancelDeleteAccessory", type: "button", title: "Cancel", width: 3
+            }
+            else if (state.editingAccessory) {
+                paragraph getInterface("subHeader", " Edit Accessory")
+                input name: "accessoryToEdit", type: "enum", title: "Edit Accessory:", options: getAccessoriesEnumList(), multiple: false, submitOnChange: true
+                if (accessoryToEdit) {
+                    def accessoryId = getIdOfAccessoryWithName(accessoryToEdit)
+                    if (accessoryId != null) {
+                        state.editedAccessoryId = accessoryId    // save the ID and name of the accessory being edited in state
+                        state.editedAccessoryName = settings["accessory${accessoryId}Name"]
+                    }
+                    else {
+                        // just edited the accessory's name so that accessoryToEdit no longer holds the same name as in settings["accessory${accessoryId}Name"]. Need to update that.
+                        accessoryId = state.editedAccessoryId
+                        app.updateSetting("accessoryToEdit",[type:"enum",value:settings["accessory${accessoryId}Name"]]) 
+                        state.editedAccessoryName = settings["accessory${accessoryId}Name"]
+                    }
+                    input name: "accessory${accessoryId}Name", type: "text", title: "Unique Name", submitOnChange: false, required: true
+                    input name: "accessory${accessoryId}Category", type: "text", title: "Category", description: "Existing categories: ${getAccessoryCategoryEnumList()}", submitOnChange: false, required: true
+                    input name: "accessory${accessoryId}Path", type: "text", title: "Accessory Image Path", submitOnChange: true, required: true
+                    input name: "accessory${accessoryId}NumStarsRequired", type: "number", title: "Number of Stars to Earn Accessory", submitOnChange: false, required: true
+                
+                     if (state.people) {
+                        state.people.each { id, person ->
+
+                              paragraph '<div width="100%" align="center"><font style="font-size:20px;font-weight: bold">' + formatAccessoryPreview(accessoryId, id) + settings["person${id}Name"] + '</font></div>', width:12
+
+                              input name: "accessory${accessoryId}TopPerson${id}", type: "text", title: "Top % Alignment", submitOnChange: true, required: false, width: 3
+                              input name: "accessory${accessoryId}BottomPerson${id}", type: "text", title: "Bottom % Alignment", submitOnChange: true, required: false, width: 3
+                              input name: "accessory${accessoryId}LeftPerson${id}", type: "text", title: "Left % Alignment", submitOnChange: true, required: false, width: 3
+                              input name: "accessory${accessoryId}RightPerson${id}", type: "text", title: "Right % Alignment", submitOnChange: true, required: false, width: 3
+                              input name: "accessory${accessoryId}ScalePerson${id}", type: "text", title: "Scale %", submitOnChange: true, required: false, width: 3
+                        
+                              input name: "isAccessory${accessoryId}EarnedByPerson${id}", type: "bool", title: "Is accessory already earned by ${settings["person${id}Name"]}?", submitOnChange: false, required: false, width: 3
+                              input name: "isAccessory${accessoryId}ActiveForPerson${id}", type: "bool", title: "Is accessory active for ${settings["person${id}Name"]}?", submitOnChange: false, required: false, width: 3
+                            input name: "isNextAccessory${accessoryId}ForPerson${id}", type: "bool", title: "Set as next accessory to be earned for ${settings["person${id}Name"]}?", submitOnChange: false, required: false, width: 3
+                          }
+                      }   
+                    paragraph "<br>"
+                    input name: "submitEditAccessory", type: "button", title: "Done", width: 3
+                }
+                
+            }            
+            else {     
+
+                input name: "addAccessory", type: "button", title: "Add Accessory", width: 3                
+                if (state.accessories && state.accessories.size() > 0) input name: "editAccessory", type: "button", title: "Edit Accessory", width: 3
+                app.clearSetting("accessoryToEdit")
+                if (state.accessories && state.accessories.size() > 0) input name: "deleteAccessory", type: "button", title: "Delete Accessory", width: 3
+                app.clearSetting("accessoryToDelete")
+            } 
+            footer() 
+        }
+    }
+}
+
+def getAccessoriesEnumList() {
+    def list = []
+    if (state.accessories) {
+        for (id in state.accessories) {
+            list.add(settings["accessory${id}Name"])
+        }
+    }
+    return list
+}
+
+def getAccessoryCategoryEnumList() {
+    def list = []
+    if (state.accessories) {
+        for (id in state.accessories) {
+            if (!list.contains(settings["accessory${id}Category"])) list.add(settings["accessory${id}Category"])
+        }
+    }
+    return list
+}
+
+String getIdOfAccessoryWithName(String name) {
+    def accessoryId = null
+    for (id in state.accessories) {
+        if (settings["accessory${id}Name"] == name) accessoryId = id
+    }
+    if (accessoryId == null) log.warn "No Accessory Found With the Name: ${name}"
+    return accessoryId
+}
+
+def addAccessory(id) {
+    if (!state.accessories) state.accessories = []
+    state.accessories.add(id)
+    def accessory = getAccessory(id)
+    if (state.people) {
+          state.people.each { personId, person ->
+              def earnedAccessories = getEarnedAccessoryIDs(personId)
+              if (accessory.people[personId]?.isEarned == true && !earnedAccessories.contains(id)) state.people[personId].accessories?.earned.add(id)
+              def activeAccessories = getActiveAccessoryIDs(personId)
+              if (accessory.people[personId]?.isActive == true && !activeAccessories.contains(id)) state.people[personId].accessories?.active.add(id)
+          }
+    }
+}
+
+def editAccessory(id) {
+    def accessory = getAccessory(id)
+    if (state.people) {
+          state.people.each { personId, person ->
+              def earnedAccessories = getEarnedAccessoryIDs(personId)
+              if (accessory.people[personId]?.isEarned == true && !earnedAccessories.contains(id)) state.people[personId].accessories?.earned.add(id)
+              else if (accessory.people[personId]?.isEarned == false && earnedAccessories.contains(id)) state.people[personId].accessories?.earned.removeElement(id)
+              def activeAccessories = getActiveAccessoryIDs(personId)
+              if (accessory.people[personId]?.isActive == true && !activeAccessories.contains(id)) state.people[personId].accessories?.active.add(id)
+              else if (accessory.people[personId]?.isActive == false && activeAccessories.contains(id)) state.people[personId].accessories?.active.removeElement(id)
+          }
+    }    
+}
+
+def getAccessory(accessoryId) {
+    if (accessoryId == null) return null
+     def peopleMap = [:]
+     if (state.people) {
+          state.people.each { id, person ->
+              def personMap = [top: settings["accessory${accessoryId}TopPerson${id}"], bottom: settings["accessory${accessoryId}BottomPerson${id}"], left: settings["accessory${accessoryId}LeftPerson${id}"], right: settings["accessory${accessoryId}RightPerson${id}"], scale: settings["accessory${accessoryId}ScalePerson${id}"], isEarned: settings["isAccessory${accessoryId}EarnedByPerson${id}"], isActive: settings["isAccessory${accessoryId}ActiveForPerson${id}"], isNext: settings["isNextAccessory${accessoryId}ForPerson${id}"]]
+              peopleMap[id] = personMap
+          }
+     }
+    return [category: settings["accessory${accessoryId}Category"], path: settings["accessory${accessoryId}Path"], numStarsRequired: settings["accessory${accessoryId}NumStarsRequired"], people: peopleMap]     
+}
+
+
+def deleteAccessory(String accessoryToDelete) {
+    def idToDelete = getIdOfAccessoryWithName(accessoryToDelete)
+    if (idToDelete && state.accessories) {       
+        state.accessories.removeElement(idToDelete)
+        clearAccessorySettings(idToDelete)    
+        if (state.people) {
+            state.people.each { id, person ->
+                state.people[id].accessories?.earned?.removeElement(idToDelete)
+                state.people[id].accessories?.active?.removeElement(idToDelete)
+            }
+        }
+    }
+}
+
+def getNextAccessoryIdForPerson(personId, excludeEarned = true) {
+    def nextAccessoryId = null
+    if (state.accessories) {
+        for (accessoryId in state.accessories) {
+            def accessory = getAccessory(accessoryId)
+            if (accessory.people[personId] && accessory.people[personId].isNext == true) {
+                nextAccessoryId = accessoryId
+            }
+        }
+    }
+    if (excludeEarned == true && state.people[personId].accessories?.earned.contains(nextAccessoryId)) nextAccessoryId = null // already earned the accessory designated as the next accessory - need to set up new accessory to be next
+    return nextAccessoryId    
+}
+
+def getLastEarnedAccessoryIdForPerson(personId) {
+    return state.people[personId].accessories?.lastEarned  
+}
+
+def getNextAccessoryForPerson(personId, excludeEarned = true) {
+    def nextAccessoryId = getNextAccessoryIdForPerson(personId, excludeEarned)
+    return getAccessory(nextAccessoryId)
+}
+
+def getNumStarsNeededForNextAccessory(personId, excludeEarned = true) {
+    def nextAccessory = getNextAccessoryForPerson(personId, excludeEarned)
+    if (nextAccessory == null) {
+        log.warn "No next accessory for person ${personId} set up yet."
+        return null
+    }
+    if (nextAccessory != null) return nextAccessory.numStarsRequired ? nextAccessory.numStarsRequired : 0
+}
+
+def initializeStarsAccessories() {
+    if (state.people) {
+        state.people.each { personId, person ->
+            if (state.people && state.people[personId]) {
+                if (!state.people[personId].stars) {
+                    def starsMap = [earned: null, completedCount: null, earnedToday: null]
+                    state.people[personId].stars = starsMap
+                }
+               if (state.people[personId].stars.earned == null) state.people[personId].stars.earned = 0
+                if (state.people[personId].stars.earnedToday == null) state.people[personId].stars.earnedToday = false
+                if (!state.people[personId].accessories) {
+                    def accessoryMap = [earned: [], active:[], lastEarned: null]
+                    state.people[personId].accessories = accessoryMap
+               }
+                if (!state.people[personId].accessories.lastEarned) state.people[personId].accessories.lastEarned = null
+                if (state.people[personId].hats) state.people[personId].hats = null
+             }
+        }
+    }
+}
+
+def handleTap(personId) {
+    if (state.people && state.people[personId]) {
+        if (state.people[personId].stars.earned < getNumStarsNeededForNextAccessory(personId) && state.people[personId].stars.earnedToday == false) {
+            addStar(personId)
+        }
+        else if (state.people[personId].stars.earnedToday == true || getNumStarsNeededForNextAccessory(personId) == null) {
+            cycleActiveAccessory(personId)  // TO DO: figure out how to handle cycling between different category accessories via taps
+        }
+    }    
+}
+
+def cycleActiveAccessory(personId, category = null) {       
+    def earnedAccessories = getEarnedAccessoryIDs(personId, category)
+    def activeAccessories = getActiveAccessoryIDs(personId, category)
+    logDebug("For personId ${personId}, found earned accessories ${earnedAccessories} and active accessories ${activeAccessories}")
+    
+    if (activeAccessories.size() == 0 && earnedAccessories.size() > 0) {
+        state.people[personId].accessories?.active.add(earnedAccessories[0]) // no active accessory (in the category), so set the first earned accessory (in the category) to active
+        logDebug("Setting active accessory for personId ${personId} to first earned accessory")
+    }
+    else {
+        def foundActive = false
+        for (def i = 0; i < earnedAccessories.size(); i++) {
+            if (activeAccessories.contains(earnedAccessories[i]) && foundActive == false) {
+                foundActive = true
+                 state.people[personId].accessories?.active.removeElement(earnedAccessories[i])
+                logDebug("Removing active accessory ${i} for personId ${personId}")
+                if (i < earnedAccessories.size() - 1) {
+                    state.people[personId].accessories?.active.add(earnedAccessories[i+1])
+                    logDebug("Setting active accessory for personId ${personId} to earned accessory ${i+1}")
+                }
+                // don't cycle around back to i = 0 so that can "remove" an accessory
+            }
+        }   
+     }
+    updateTracker(personId)
+}
+
+def replaceActiveAccessory(personId, newActiveAccessoryId) {
+    def newAccessory = getAccessory(newActiveAccessoryId) 
+    deactivateAccessories(personId, newAccessory.category)
+    state.people[personId].accessories?.active.add(newActiveAccessoryId)  
+}
+
+def deactivateAccessories(personId, category = null) {
+    if (category == null) state.people[personId].accessories?.active = []
+    else {
+        for (def i = 0; i < state.people[personId].accessories?.active?.size(); i++) {
+            def accessory = getAccessory(state.people[personId].accessories?.active[i]) 
+            if (accessory.category == category) state.people[personId].accessories?.active.removeElement(state.people[personId].accessories?.active[i])
+        }
+    }    
+}
+
+def awardNextAccessory(personId) {
+     def nextAccessoryId = getNextAccessoryIdForPerson(personId)  
+     if (nextAccessoryId != null) {
+         state.people[personId].accessories?.earned.add(nextAccessoryId)
+         state.people[personId].accessories?.lastEarned = nextAccessoryId
+         app.updateSetting("isNextAccessory${nextAccessoryId}ForPerson${personId}",[value:"false",type:"bool"])
+         replaceActiveAccessory(personId, nextAccessoryId)
+     }
+}
+
+def takeBackLastEarnedAccessory(personId) {
+     def lastEarnedAccessoryId = getLastEarnedAccessoryIdForPerson(personId) 
+     if (lastEarnedAccessoryId != null) {
+         state.people[personId].accessories?.earned.removeElement(lastEarnedAccessoryId)
+         state.people[personId].accessories?.lastEarned = null
+         app.updateSetting("isNextAccessory${lastEarnedAccessoryId}ForPerson${personId}",[value:"true",type:"bool"])
+         if (state.people[personId].accessories?.active.contains(lastEarnedAccessoryId)) {
+             state.people[personId].accessories?.active.removeElement(lastEarnedAccessoryId)
+             def lastEarnedAccessory = getAccessory(lastEarnedAccessoryId) 
+             def accessoriesInCategory = getEarnedAccessoryIDs(personId, lastEarnedAccessory.category)
+             if (accessoriesInCategory.size() > 0) {
+                 state.people[personId].accessories?.active.add(accessoriesInCategory[0]) // replace deactivated accessory with the first accessory in the category
+             }
+         }
+     }    
+}
+
+def getEarnedAccessoryIDs(personId, category = null) {
+    def accessoryIDs = []  
+    if (category == null) accessoryIDs = state.people[personId].accessories?.earned
+    else {
+        for (def i = 0; i < state.people[personId].accessories?.earned?.size(); i++) {
+            def accessory = getAccessory(state.people[personId].accessories?.earned[i]) 
+            if (accessory.category == category) accessoryIDs.add(state.people[personId].accessories?.earned[i])
+        }
+    }
+    return accessoryIDs
+}
+
+def getActiveAccessoryIDs(personId, category = null) {
+    def accessoryIDs = []  
+    if (category == null) accessoryIDs = state.people[personId].accessories?.active
+    else {
+        for (def i = 0; i < state.people[personId].accessories?.active?.size(); i++) {
+            def accessory = getAccessory(state.people[personId].accessories?.active[i]) 
+            if (accessory.category == category) accessoryIDs.add(state.people[personId].accessories?.active[i])
+        }
+    }
+    return accessoryIDs
+}
+
+def addStar(personId) {
+    state.people[personId].stars.earned++
+    state.people[personId].stars.earnedToday = true
+    if (state.people[personId].stars.earned == getNumStarsNeededForNextAccessory(personId)) {
+        awardNextAccessory(personId)
+        state.people[personId].stars.earned = 0 // reset stars earned
+    }
+    updateTracker(personId)
+}
+
+def subtractStar(personId) {
+    if (state.people[personId].stars.earned == 0) {
+        // undesired star addition resulted in awarding of the next accessory. Undo that.
+        takeBackLastEarnedAccessory(personId)
+        state.people[personId].stars.earned = getNumStarsNeededForNextAccessory(personId, false) - 1
+    }
+    else state.people[personId].stars.earned--
+    state.people[personId].stars.earnedToday = false
+    updateTracker(personId)
+}
+
 void resetAddEditState() {
     state.addingPerson = false
     state.editingPerson = false
     state.deletingPerson = false
+    state.addingAccessory = false
+    state.editingAccessory = false
+    state.deletingAccessory = false
     state.addingVehicle = false
     state.editingVehicle = false
     state.deletingVehicle = false
@@ -565,6 +995,43 @@ void appButtonHandler(btn) {
       case "cancelDeletePerson":
          state.deletingPerson = false
          break
+      case "addAccessory":
+         state.addingAccessory = true
+         if (!state.lastAccessoryID) state.lastAccessoryID = 0
+         state.lastAccessoryID++
+         break
+      case "submitNewAccessory":
+         addAccessory(state.lastAccessoryID.toString())
+         state.addingAccessory = false
+         break
+      case "cancelAddAccessory":
+         state.addingAccessory = false
+         clearAccessorySettings(state.lastAccessoryID.toString())
+         state.lastAccessoryID--
+         break
+      case "editAccessory":
+         state.editingAccessory = true
+         state.editAccessorySubmitted = false
+         break
+      case "submitEditAccessory":
+         editAccessory(state.editedAccessoryId.toString())
+         state.editingAccessory = false
+         state.editAccessorySubmitted = true
+         state.editedAccessoryId = null
+         break
+      case "cancelEditAccessory":
+         state.editingAccessory = false
+         break
+      case "deleteAccessory":
+         state.deletingAccessory = true
+         break
+      case "submitDeleteAccessory":
+         if (accessoryToDelete) deleteAccessory(accessoryToDelete)
+         state.deletingAccessory = false
+         break
+      case "cancelDeleteAccessory":
+         state.deletingAccessory = false
+         break       
       case "addVehicle":
          state.addingVehicle = true
          if (!state.lastVehicleID) state.lastVehicleID = 0
@@ -1236,7 +1703,8 @@ def initialize() {
     scheduleTimeTriggers()
     initializePresence()
     initializeSleep()
-  //  updateSleepCompetition()   // uncomment to debug sleep competition
+    initializeStarsAccessories()
+   // updateSleepCompetition()   // uncomment to debug sleep competition
     initializeSVGImages()
     initializeTrackers()
 }
@@ -1264,6 +1732,7 @@ def initializePlaces() {
 }
 
 def initializeSleep() {
+    schedule("01 00 00 ? * *", resetSleepCompetition)	// check each day if need to reset sleep competition at the beginning of the week or month    
     if (state.people) {
         state.people.each { personId, person ->
             state.people[personId]?.sleepOnlySensor = hasOnlySleepSensor(personId) 
@@ -1409,7 +1878,33 @@ def scheduleTimeTriggers() {
             }   
         }
     }
+     if (state.people) {
+        state.people.each { personId, person ->
+            if (settings["person${personId}Stars"] == true) {
+                schedule("01 00 00 ? * *", allowAddStar)
+            }
+        }
+     }
 }
+
+def allowAddStar() {
+    if (state.people) {
+        state.people.each { personId, person ->
+            if (settings["person${personId}Stars"] == true) {
+                state.people[personId].stars?.earnedToday = false
+            }
+        }
+    }
+}
+
+def resetStars(data) {
+    def personId = data.personId
+    if (state.people && state.people[personId]) {
+        state.people[personId].stars.earned = 0
+    }
+}
+
+@Field daysOfWeekMap = ["Sunday":1, "Monday":2, "Tuesday":3, "Wednesday":4, "Thursday":5, "Friday":6, "Saturday":7]
 
 def subscribeTriggers() {
     subscribePeople()
@@ -1487,7 +1982,18 @@ def sleepScoreHandler(evt) {
         def isSleepDeviceForPerson = isSleepDeviceForPerson(personId, eventDevice)
         logDebug("Sleep Device for person ${personId} is ${isSleepDeviceForPerson}")
         if (isSleepDeviceForPerson) {
-            state.people[personId]?.sleep.score = eventValue
+            def midnight = new Date().clearTime()
+            def midnightUtc = midnight.getTime()
+            def newSleepScore = eventValue
+            def existingSleepScore = state.people[personId]?.sleep.score
+            def asOf = state.people[personId]?.sleep.sleepDataAtTime
+            if (existingSleepScore && asOf >= midnightUtc) {
+                // if already have a sleep score for today, then set the score to the maximum for today
+                if (newSleepScore >= existingSleepScore) state.people[personId]?.sleep.score = newSleepScore
+                else state.people[personId]?.sleep.score = existingSleepScore
+            }
+            else state.people[personId]?.sleep.score = newSleepScore
+            // set timestamp to latest event time no matter whether latest score is the max score for the day
             state.people[personId]?.sleep.sleepDataAtTime = eventTime
             def sleepQuality = settings["person${personId}SleepSensor"]?.currentValue("sleepQuality")
             logDebug("Sleep data for person ${personId} is: score = ${eventValue}. quality = ${sleepQuality}")
@@ -1521,6 +2027,51 @@ def bedPresenceHandler(evt) {
     }
 }
 
+def resetSleepCompetition() {
+    
+    state.people?.each { personId, person ->
+        state.people[personId]?.sleep.winner = false
+    }
+    
+    Calendar cal = Calendar.getInstance()
+    cal.setTimeZone(location.timeZone)
+    cal.setTime(new Date())
+    def dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+    def dayOfMonth = cal.get(Calendar.DAY_OF_MONTH)
+    def lastDayOfMonth = cal.getActualMaximum(GregorianCalendar.DAY_OF_MONTH)
+    def isWeekStart = dayOfWeek == Calendar.SATURDAY ? true : false
+    def isTrophyResetDay = dayOfWeek == Calendar.MONDAY ? true : false
+    def isMonthStart = dayOfMonth == 1 ? true : false
+    logDebug("Checking sleep competition day. dayOfWeek=${dayOfWeek} with isWeekStart=${isWeekStart}. dayOfMonth=${dayOfMonth} with isMonthStart=${isMonthStart}")
+        
+    state.hasSleepCompetitionCompletedToday = false
+    
+    if (isWeekStart) {
+        // make sure it's been at least 24 hours since cleared scores last, so that scores aren't cleared by a nap at the start of the week
+        if (state.weekSleepWinsLastCleared) {
+           if (getSecondsSince(state.weekSleepWinsLastCleared) > 86400) {
+               clearWeeklyWinCount() 
+           }
+        }
+        else clearWeeklyWinCount()
+    }
+    if (isMonthStart) {
+        // make sure it's been at least 24 hours since cleared scores last, so that scores aren't cleared by a nap at the start of the month
+        if (state.monthSleepWinsLastCleared) {
+            if (getSecondsSince(state.monthSleepWinsLastCleared) > 86400) {
+                  clearMonthlyWinCount() 
+            }
+        }
+        else clearMonthlyWinCount()
+    }    
+    if (isTrophyResetDay) { // show trophy through the weekend and then hide
+        state.people?.each { personId, person ->
+            state.people[personId]?.sleep.weekWinner = false
+            state.people[personId]?.sleep.monthWinner = false
+        }
+    }
+}
+
 def updateSleepCompetition() {
     // check if all sleep sensors have been updated today before competing 
     logDebug("Updating Sleep Competition")
@@ -1532,66 +2083,68 @@ def updateSleepCompetition() {
     def midnightUtc = midnight.getTime()
     state.people?.each { personId, person ->
         if (hasSleepSensor(personId)) {
-            def sleepDataAtTime = state.people[personId]?.sleep.sleepDataAtTime
-            if (sleepDataAtTime) {  
-              //  logDebug("sleepDataAtTime for person ${personId} is ${sleepDataAtTime}")
-                def scoreInt = person.sleep.score as Integer
-              //  logDebug("Cast sleep score to ${scoreInt} integer")
-                if (sleepDataAtTime < midnightUtc) {    // sleep data not updated today
-                    allScoresUpdated = false
-                }
-                else {
-                    if (scoreInt && scoreInt > winner.score) {
-                     //   logDebug("Setting winner to person ${personId}")                       
-                        winner = [score: scoreInt, personList: [personId]]
-                    }
-                    else if (scoreInt && scoreInt == winner.score) {
-                        winner.personList.add(personId)
-                    }
-                }
+            def isInBed = state.people[personId]?.sleep.presence == "present" ? true : false
+            def asOf = state.people[personId]?.sleep.presenceAtTime
+            if (!inBed && asOf < midnightUtc) { // did not sleep in bed last night, so exclude from sleep competition
+                    logDebug("Person ${personId} did not sleep in their bed last night. Excluding from sleep competition.")
+                    // nothing to do here, just don't set allScoresUpdated to false
             }
             else {
-                allScoresUpdated = false    // no sleep data at all yet
-                logDebug("No sleep data yet for person ${personId}. Aborting update to sleep competition.")
+                def sleepDataAtTime = state.people[personId]?.sleep.sleepDataAtTime
+                if (sleepDataAtTime) {  
+                    logDebug("Person ${personId} sleep data last updated at time ${sleepDataAtTime}. ")
+                    def scoreInt = person.sleep.score as Integer
+                    if (sleepDataAtTime < midnightUtc) {    // sleep data not updated today
+                        logDebug("No sleep data today for person ${personId}. Aborting update to sleep competition.")
+                        allScoresUpdated = false
+                    }
+                    else {
+                        if (scoreInt && scoreInt > winner.score) {
+                            logDebug("Tentatively setting sleep competition winner to person ${personId}")                       
+                            winner = [score: scoreInt, personList: [personId]]
+                        }
+                        else if (scoreInt && scoreInt == winner.score) {
+                            winner.personList.add(personId)
+                        }
+                    }
+                }
+                else {
+                    allScoresUpdated = false    // no sleep data at all yet
+                    logDebug("No sleep data yet for person ${personId}. Aborting update to sleep competition.")
+                }    
             }
         }
     }
   //  logDebug("allScoresUpdated value is ${allScoresUpdated}. Winner is person ${winner.personList}")
     if (allScoresUpdated) {
-        logDebug("Setting competition winner")
+        logDebug("All sleep scores updated for people competiting. Setting competition winner")
         Calendar cal = Calendar.getInstance()
         cal.setTimeZone(location.timeZone)
         cal.setTime(new Date())
         def dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
         def dayOfMonth = cal.get(Calendar.DAY_OF_MONTH)
         def lastDayOfMonth = cal.getActualMaximum(GregorianCalendar.DAY_OF_MONTH)
-        def isWeekStart = dayOfWeek == Calendar.MONDAY ? true : false
-        def isWeekEnd = dayOfWeek == Calendar.SUNDAY ? true : false
+        def isWeekStart = dayOfWeek == Calendar.SATURDAY ? true : false
+        def isWeekEnd = dayOfWeek == Calendar.FRIDAY ? true : false
         def isMonthStart = dayOfMonth == 1 ? true : false
         def isMonthEnd = dayOfMonth == lastDayOfMonth ? true : false
+      //logDebug("Checking sleep competition day. dayOfWeek=${dayOfWeek} with isWeekStart=${isWeekStart} and isWeekEnd=${isWeekEnd}. dayOfMonth=${dayOfMonth} with isMonthStart=${isMonthStart} and isMonthEnd=${isMonthEnd}")    
         
-        if (isWeekStart) {
-            // make sure it's been at least 24 hours since cleared scores last, so that scores aren't cleared by a nap at the start of the week
-            if (state.weekSleepWinsLastCleared) {
-               if (getSecondsSince(state.weekSleepWinsLastCleared) > 86400) {
-                   clearWeeklyWinCount() 
-               }
-            }
-            else clearWeeklyWinCount()
-        }
-        if (isMonthStart) {
-            // make sure it's been at least 24 hours since cleared scores last, so that scores aren't cleared by a nap at the start of the month
-            if (state.monthSleepWinsLastCleared) {
-                if (getSecondsSince(state.monthSleepWinsLastCleared) > 86400) {
-                      clearMonthlyWinCount() 
+        if (state.hasSleepCompetitionCompletedToday == true) {
+             // sleep competition already updated today, so undo in case results have changed
+            state.people?.each { personId, person ->
+                if (state.people[personId]?.sleep.winner == true) {
+                    state.people[personId]?.sleep.winner = false
+                    state.people[personId]?.sleep.weekWinCount = (state.people[personId]?.sleep.weekWinCount == 1) ? null : state.people[personId]?.sleep.weekWinCount - 1
+                    state.people[personId]?.sleep.monthWinCount = (state.people[personId]?.sleep.monthWinCount == 1) ? null : state.people[personId]?.sleep.monthWinCount - 1
                 }
-            }
-            else clearMonthlyWinCount()
+            }            
         }
-    
+        
+        // now set winner of sleep competition
         state.people?.each { personId, person ->
             if (winner.personList.contains(personId)) {
-              //  logDebug("Setting person ${personId} as the official winner of the sleep competition")
+                logDebug("Setting person ${personId} as the official winner of the sleep competition")
                 state.people[personId]?.sleep.winner = true
                 state.people[personId]?.sleep.weekWinCount = (state.people[personId]?.sleep.weekWinCount == null) ? 1 : state.people[personId]?.sleep.weekWinCount + 1
                 state.people[personId]?.sleep.monthWinCount = (state.people[personId]?.sleep.monthWinCount == null) ? 1 : state.people[personId]?.sleep.monthWinCount + 1
@@ -1599,6 +2152,8 @@ def updateSleepCompetition() {
             else state.people[personId]?.sleep.winner = false
             updateTracker(personId)
         }
+        
+        state.hasSleepCompetitionCompletedToday = true
         
         if (isWeekEnd) {
             def weekWinner = [winCount: 0, personList: []] // list for ties
@@ -1839,7 +2394,7 @@ def startTripForPerson(String personId, String tripId) {
     runIn(tripTimeOut, "timeOutTrip", [data: [personId: personId, tripId: tripId, originalDuration: bestRoute.duration]])
 }
 
-def timeOutTrip() {
+def timeOutTrip(data) {
     def tripId = data.tripId
     def personId = data.personId
     def originalDuration = data.originalDuration
@@ -2031,15 +2586,16 @@ def pushRouteRecommendation(String tripId, String personId = null) {
         if (bestRoute) {
             def etaDate = getETADate(bestRoute.duration)
             def eta = extractTimeFromDate(etaDate)
-            def isPreferred = isPreferredRoute(tripId, bestRoute.summary)
+            def isBestPreferred = isPreferredRoute(tripId, bestRoute.summary)
         
             def nextBestRoute = getSecondBestRoute(tripId)
+            def isNextBestPreferred = isPreferredRoute(tripId, nextBestRoute.summary)
             def fasterBy = Math.round((nextBestRoute.duration - bestRoute.duration)/60)
 
-            if (isPreferred && fasterBy < 0) {
+            if (isBestPreferred && fasterBy < 0) {
                 settings["trip${tripId}DeparturePushDevices"].deviceNotification("Take ${bestRoute.summary} as the preferred route, for ${eta} arrival. But ${nextBestRoute.summary} is ${fasterBy*-1} mins faster.")
             }
-            else {
+            else if (isBestPreferred || !isNextBestPreferred || (!isBestPreferred && isNextBestPreferred && fasterBy >= settings["trip${tripId}PreferredRouteBias"])) {
                 settings["trip${tripId}DeparturePushDevices"].deviceNotification("Take ${bestRoute.summary} for ${eta} arrival. Faster than ${nextBestRoute.summary} by ${fasterBy} mins.")
             }
         
@@ -2297,14 +2853,14 @@ def handleVehicleChange(String personId) {
 
     // did vehicle change start a trip?
     state.trips.each { tripId, trip ->
-         if (inTripVehicle(personId, tripId) && atOriginOfTrip(personId, tripId) && areDepartureConditionsMet(tripId) && !isPersonOnTrip(personId, tripId) && !atDestinationOfTrip(personId, tripId)) {
+         if (isTripPerson(personId, tripId) && inTripVehicle(personId, tripId) && atOriginOfTrip(personId, tripId) && areDepartureConditionsMet(tripId) && !isPersonOnTrip(personId, tripId) && !atDestinationOfTrip(personId, tripId)) {
              // assume trip just started because (i) got in a vehicle specified for the trip (ii) at the origin of the trip (iii) while departure conditions met; (iv) trip was not already in progress; and (v) person is not already at the destination of the trip
              startTripForPerson(personId, tripId)             
          }
     }
     // did vehicle change end a trip?
     def currentTripId = state.people[personId]?.current.trip.id
-    if (isPersonOnTrip(personId) && !inTripVehicle(personId, currentTripId) && !mostPreferredArrivalTriggersConfigured(personId, currentTripId) && acceptableArrivalTriggersConfigured(personId, currentTripId)) {
+    if (currentTripId != null && isTripPerson(personId, tripId) && !inTripVehicle(personId, currentTripId) && !mostPreferredArrivalTriggersConfigured(personId, currentTripId) && acceptableArrivalTriggersConfigured(personId, currentTripId)) {
         // Exiting of a vehicle specified for the trip while the trip was in progress COULD mean that the trip just ended. But it could also mean that the person stopped on the way to the destination, but has not yet arrived. So, only detect arrival based on vehicle presence if it is the most acceptable way possible given the current sensor configuration.                
         endCurrentTripForPerson(personId) 
     }
@@ -2346,7 +2902,7 @@ def handleDrivingChange(String personId) {        // isDriving is only set by li
     // did driving change start a trip?
     if (isDriving(personId)) {  // person just started driving
         state.trips.each { tripId, trip ->
-             if (isPersonOnTrip(personId) && areDepartureConditionsMet(tripId) && !isPersonOnTrip(personId, tripId)) {
+             if (isTripPerson(personId, tripId) && areDepartureConditionsMet(tripId) && !isPersonOnTrip(personId, tripId)) {
                  // assume trip just started because (i) person scheduled for the trip just started driving (ii) while departure conditions met; (iii) and trip was not already in progress
                  startTripForPerson(personId, tripId)             
              }
@@ -2355,7 +2911,7 @@ def handleDrivingChange(String personId) {        // isDriving is only set by li
     else {   // person just stopped driving
     // did driving change end a trip?
         def currentTripId = state.people[personId]?.current.trip.id
-        if (isPersonOnTrip(personId) && !mostPreferredArrivalTriggersConfigured(personId, currentTripId) && acceptableArrivalTriggersConfigured(personId, currentTripId)) {
+        if (currentTripId != null && isTripPerson(personId, currentTripId) && !mostPreferredArrivalTriggersConfigured(personId, currentTripId) && acceptableArrivalTriggersConfigured(personId, currentTripId)) {
             // Stopping of driving state while the trip was in progress COULD mean that the trip just ended. But it could also mean that the person stopped on the way to the destination, but has not yet arrived. So, only detect arrival based on driving state stopping if it is the most acceptable way possible given the current sensor configuration.                
             endCurrentTripForPerson(personId) 
         }
@@ -3115,7 +3671,7 @@ def getSleepDataSvg(String personId) {
         
       //  logDebug("colored sleep svg is ${groovy.xml.XmlUtil.escapeXml(colored)}")
             
-        svg += '<svg width="20" height="38" z-index="1" x="5" y="-7" viewBox="0 0 20 20" overflow="visible" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">'
+        svg += '<svg width="20" height="38" z-index="5" x="5" y="-7" viewBox="0 0 20 20" overflow="visible" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">'
         svg += '<style>'
         svg += '.moon {fill:' + sleepColor + '}'
         svg += '</style>'
@@ -3178,7 +3734,7 @@ def fetchTracker() {
     
     def isInSleepWindow = isWithinSleepDisplayWindow(personId)
     
-    if (!state.people[personId]?.sleepOnlySensor || (state.people[personId]?.sleepOnlySensor && isInSleepWindow)) {
+    if (!state.people[personId]?.sleepOnlySensor || (state.people[personId]?.sleepOnlySensor && isInSleepWindow) || settings["person${personId}Stars"] == true) {
         
         if (trackerType == 'svg') {
             svg += '<svg x="20" width="80" height="80" z-index="1">'
@@ -3408,7 +3964,7 @@ def updateTracker(String personId) {
         def sleepData = getSleepData(personId)
         def isWeekWinner = sleepData.weekWinner
         def isMonthWinner = sleepData.monthWinner
-        def isWinner = isWeekSleepWinner || isMonthSleepWinner
+        def isWinner = isWeekWinner || isMonthWinner
 
         // DEBUG CODE
      //   isInSleepWindow = true
@@ -3424,24 +3980,54 @@ def updateTracker(String personId) {
         
         logDebug("isInSleepWindow: ${isInSleepWindow} isWinner: ${isWinner} for personID: ${personId}")
         
-        if (state.people[personId]?.sleepOnlySensor) {
-            if (isInSleepWindow) {
+        if (state.people[personId]?.sleepOnlySensor ||  settings["person${personId}Stars"] == true) {
+            if (isInSleepWindow || settings["person${personId}Stars"] == true) {
                 content +=            'background-position:'
-                if (isWinner) content += 'top 18% left 4%, top 25% right 8%,'
-                else content += 'top 18% left 4%,'
+                if (isInSleepWindow) content += 'top 18% left 4%,'
+                if (isWinner) content += 'top 25% right 8%,'
+                for (def i = 0; i < state.people[personId]?.stars?.earned; i++) {
+                    def starSize = 24
+                    def starting = 50 - (starSize * state.people[personId]?.stars?.earned / 2) + (starSize/2)
+                    def perc = starting + (i*starSize) // (i < halfway) ? 50-((i+1)*5) : 50+((i+1)*5)
+                    content += "bottom 0% left ${perc}%,"
+                }
+                for (def i = 0; i < state.people[personId]?.accessories?.active.size(); i++) {
+                    def accessory = getAccessory(state.people[personId]?.accessories?.active[i])
+                    if (accessory.people[personId]?.top) content += "top ${accessory.people[personId]?.top}% "
+                    else if (accessory.people[personId]?.bottom) content += "bottom ${accessory.people[personId]?.bottom}% "
+                    if (accessory.people[personId]?.left) content += "left ${accessory.people[personId]?.left}%,"
+                    else if (accessory.people[personId]?.right) content += "right ${accessory.people[personId]?.right}%,"
+                }
                 content +=            'center;'
                 content +=            'background-size:'
-                if (isWinner) content += '20%,20%,'
-                else  content += '20%,'
-                content +=            avatarSize + '%;'
-                content +=            'background-image:'
-                if (isWinner) {
-                    content += 'url("' + getSleepTrackerEndpoint(personId) + '&version='
-                    content += state.refreshNum + '"), url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'
+                if (isInSleepWindow) content += '20%,'
+                if (isWinner)  content += '20%,'
+                for (def i = 0; i < state.people[personId]?.stars?.earned; i++) {
+                    content += "17%,"
                 }
-                else  {
+                for (def i = 0; i < state.people[personId]?.accessories?.active.size(); i++) {
+                    def accessory = getAccessory(state.people[personId]?.accessories?.active[i])
+                    content += "${accessory.people[personId]?.scale}%,"
+                }     
+                content +=            avatarSize + '%;'
+                content +=            'background-image:' 
+                if (isInSleepWindow) {
                     content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
-                }              
+                }
+                if (isWinner) {
+                    content +=  'url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'
+                }   
+                for (def i = 0; i < state.people[personId]?.stars?.earned; i++) {
+                    def icon = "Earned Star"
+                    if (settings["person${personId}StarColor"] == "Red") {
+                        icon = "Red Earned Star"
+                    }
+                    content += 'url("' + getPathOfStandardIcon(icon,"Stars") + '"),' 
+                }
+                for (def i = 0; i < state.people[personId]?.accessories?.active.size(); i++) {
+                    def accessory = getAccessory(state.people[personId]?.accessories?.active[i])
+                    content += 'url("' + accessory.path + '"),' 
+                }             
                 content +=            'url("' + personAvatar + '");'       
             }
         }
@@ -3451,11 +4037,22 @@ def updateTracker(String personId) {
                 if (isInSleepWindow && isWinner) content += 'top 18% left 4%, top 25% right 8%,'
                 else if (isInSleepWindow) content += 'top 18% left 4%,'
                 else if (isWinner) content += 'top 25% right 8%,'
+                for (def i = 0; i < state.people[personId]?.accessories?.active.size(); i++) {
+                    def accessory = getAccessory(state.people[personId]?.accessories?.active[i])
+                    if (accessory.people[personId]?.top) content += "top ${accessory.people[personId]?.top}% "
+                    else if (accessory.people[personId]?.bottom) content += "bottom ${accessory.people[personId]?.bottom}% "
+                    if (accessory.people[personId]?.left) content += "left ${accessory.people[personId]?.left}%,"
+                    else if (accessory.people[personId]?.right) content += "right ${accessory.people[personId]?.right}%,"
+                }
                 content +=            'bottom 24% right 7.5%, bottom 24% left 8%, bottom 0% right 50%, center;'
                 content +=            'background-size:'
                 if (isInSleepWindow && isWinner) content += '20%,20%,'
                 else if (isInSleepWindow) content += '20%,'
                 else if (isWinner) content += '20%,'
+                for (def i = 0; i < state.people[personId]?.accessories?.active.size(); i++) {
+                    def accessory = getAccessory(state.people[personId]?.accessories?.active[i])
+                    content += "${accessory.people[personId]?.scale}%,"
+                } 
                 content +=            '21%, 21%, 100% auto,' + avatarSize + '%;'
                 content +=            'background-image:'
                 if (isInSleepWindow && isWinner) {
@@ -3468,6 +4065,10 @@ def updateTracker(String personId) {
                 else if (isWinner) {
                     content += 'url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'  
                 }
+                for (def i = 0; i < state.people[personId]?.accessories?.active.size(); i++) {
+                    def accessory = getAccessory(state.people[personId]?.accessories?.active[i])
+                    content += 'url("' + accessory.path + '"),' 
+                }
                 content +=            'url("' + destinationIcon + '"),'
                 content +=            'url("' + presenceIcon + '"),'
                 content +=            'url("' + trackerUrl + '"),' 
@@ -3478,11 +4079,22 @@ def updateTracker(String personId) {
                 if (isInSleepWindow && isWinner) content += 'top 18% left 4%, top 25% right 8%,'
                 else if (isInSleepWindow) content += 'top 18% left 4%,'
                 else if (isWinner) content += 'top 25% right 8%,'
+                for (def i = 0; i < state.people[personId]?.accessories?.active.size(); i++) {
+                    def accessory = getAccessory(state.people[personId]?.accessories?.active[i])
+                    if (accessory.people[personId]?.top) content += "top ${accessory.people[personId]?.top}% "
+                    else if (accessory.people[personId]?.bottom) content += "bottom ${accessory.people[personId]?.bottom}% "
+                    if (accessory.people[personId]?.left) content += "left ${accessory.people[personId]?.left}%,"
+                    else if (accessory.people[personId]?.right) content += "right ${accessory.people[personId]?.right}%,"
+                }
                 content +=            'bottom 24% right 7.5%, bottom 0% right 50%, center;'
                 content +=            'background-size:'
                 if (isInSleepWindow && isWinner) content += '20%,20%,'
                 else if (isInSleepWindow) content += '20%,'
                 else if (isWinner) content += '22%,'
+                for (def i = 0; i < state.people[personId]?.accessories?.active.size(); i++) {
+                    def accessory = getAccessory(state.people[personId]?.accessories?.active[i])
+                    content += "${accessory.people[personId]?.scale}%,"
+                } 
                 content +=            '21%, 100% auto,' + avatarSize + '%;'
                 content +=            'background-image:'
                  if (isInSleepWindow && isWinner) {
@@ -3494,7 +4106,11 @@ def updateTracker(String personId) {
                 }
                 else if (isWinner) {
                     content += 'url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'  
-                }               
+                }
+                for (def i = 0; i < state.people[personId]?.accessories?.active.size(); i++) {
+                    def accessory = getAccessory(state.people[personId]?.accessories?.active[i])
+                    content += 'url("' + accessory.path + '"),' 
+                }
                 content +=            'url("' + presenceIcon + '"),'
                 content +=            'url("' + trackerUrl + '"),'
                 content +=            'url("' + personAvatar + '");'   
@@ -3650,7 +4266,7 @@ def getTripWithRoutes(String tripId, Boolean doForceUpdate=false) {
             else {
                 def oldAverage = state.trips[tripId].averageTrafficDelay
                 def newSampleNum = state.trips[tripId].numSamplesForAverage + 1
-                state.trips[tripId].averageTrafficDelay = oldAverage + ((bestRouteTrafficDelay - oldAverage) / newSampleNum)
+                state.trips[tripId].averageTrafficDelay = ((oldAverage + ((bestRouteTrafficDelay - oldAverage) / newSampleNum)) as double).round(2)
                 state.trips[tripId].numSamplesForAverage = newSampleNum
             }
             def relativeTrafficDelay = state.trips[tripId].routes['0'].trafficDelay - state.trips[tripId].averageTrafficDelay
@@ -3922,6 +4538,8 @@ def getPathOfStandardIcon(String name, type) {
     else if (type == "People") iconPath = standardPeopleIcons[name]
     else if (type == "Sleep") iconPath = standardSleepIcons[name]
     else if (type == "Unknown") iconPath = standardUnknownIcons[name]
+    else if (type == "Stars") iconPath = standardStarIcons[name]
+    else if (type == "Hats") iconPath = '/Hats/' + state.hatFiles[name]
     
     return getImagePath() + iconPath
 }
@@ -3958,3 +4576,11 @@ def getPathOfStandardIcon(String name, type) {
     'Light': '/Unknown/questionLight.svg',
     'Dark': '/Unknown/questionDark.svg',
     ]
+
+@Field static standardStarIcons = [
+   'Star': '/Stars/star.svg',
+    'Earned Star': '/Stars/earnedStar.svg',
+       'Red Star': '/Stars/starRed.svg',
+    'Red Earned Star': '/Stars/earnedStarRed.svg'
+]
+
