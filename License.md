@@ -25,13 +25,13 @@ This Work (the Multi-Place App) is provided to You under the terms of this licen
 
 2. Fair Dealing Rights. Nothing in this License is intended to reduce, limit, or restrict any uses free from copyright or rights arising from limitations or exceptions that are provided for in connection with the copyright protection under copyright law or other applicable laws.
 
-3. License Grant. Subject to the terms and conditions of this License, Licensor hereby grants You a worldwide, royalty-free, non-exclusive, perpetual (for the duration of the applicable copyright) license to exercise the rights in the Work as stated below:
+3. **License Grant.** Subject to the terms and conditions of this License, Licensor hereby grants You a worldwide, royalty-free, non-exclusive, perpetual (for the duration of the applicable copyright) license to exercise the rights in the Work as stated below:
 
-- to Reproduce the Work, to incorporate the Work into one or more Collections, and to Reproduce the Work as incorporated in the Collections;
+**- to Reproduce the Work, to incorporate the Work into one or more Collections, and to Reproduce the Work as incorporated in the Collections;**
 
-- to prepare derivative works based upon the Work;
+**- to prepare derivative works based upon the Work, for your own personal use (not for distribution);**
 
-- to Distribute the Work in its unmodified form.
+**- to Distribute the Work in its unmodified, non-derivative form.**
 
 The above rights include the rights to use this Work for use on any number of Hubitat hubs under the direct control of the user. The above rights may be exercised in all media and formats whether now known or hereafter devised. The above rights include the right to make such modifications as are technically necessary to exercise the rights in other media and formats. The above rights also include the right to make Adaptations generally, provided that those Adaptations are not distributed publicly. Subject to 8(f), all rights not expressly granted by Licensor are hereby reserved, including but not limited to the rights set forth in Section 4(d).
 
