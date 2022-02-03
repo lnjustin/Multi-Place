@@ -3,6 +3,7 @@
  * Multi-Place
  * v1.0.0 - Initial Release
  * v1.1.0 - Added failed arrival automations
+ * v1.1.1 - Fixed issue with presenece sensor descriptions when adding/editing place
 
  *
  * Copyright 2020 Justin Leonard
@@ -1404,7 +1405,7 @@ def PlacesPage() {
                             personDisplay += "<br><font style='font-size:20px;font-weight: bold'>${settings["person${personId}Name"]}</font></td>"
                             personDisplay += "</tr></table>"
                          //  paragraph personDisplay
-                            input name: "place${state.lastPlaceID}Person${personId}Sensor", type: "capability.presenceSensor", title: "${settings["person${personId}Name"]} Presence Sensor", description: "Presence Sensor for ${settings["person${personId}Name"]}'s presence at place",  submitOnChange: false, multiple: false, required: false, width: 4
+                            input name: "place${state.lastPlaceID}Person${personId}Sensor", type: "capability.presenceSensor", title: "${settings["person${personId}Name"]} Presence Sensor", submitOnChange: false, multiple: false, required: false, width: 4
                         }                       
                 }
                 paragraph "Select garage door(s), contact sensor(s), and/or switch(es) that change when someone is about to depart. When this place is the origin of a trip, the changing of any of these devices during a time window for departure on the trip will trigger a proactive check of travel conditions, to advise you of the best route to take even before actual departure."
@@ -1461,7 +1462,7 @@ def PlacesPage() {
                             personDisplay += "<br><font style='font-size:20px;font-weight: bold'>${settings["person${personId}Name"]}</font></td>"
                             personDisplay += "</tr></table>"
                            // paragraph personDisplay
-                            input name: "place${placeID}Person${personId}Sensor", type: "capability.presenceSensor", title: "${settings["person${personId}Name"]} Presence Sensor", description: "Presence Sensor for ${settings["person${personId}Name"]}'s presence at place",  submitOnChange: false, multiple: false, required: false, width: 4
+                            input name: "place${placeID}Person${personId}Sensor", type: "capability.presenceSensor", title: "${settings["person${personId}Name"]} Presence Sensor", submitOnChange: false, multiple: false, required: false, width: 4
                         }   
                         
                     }
