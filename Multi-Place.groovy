@@ -4,6 +4,7 @@
  * v1.0.0 - Initial Release
  * v1.1.0 - Added failed arrival automations
  * v1.1.1 - Fixed issue with presenece sensor descriptions when adding/editing place
+ * v1.1.2 - Debugging geocode issues
 
  *
  * Copyright 2020 Justin Leonard
@@ -214,6 +215,7 @@ def PeoplePage() {
                 if (settings["person${state.lastPersonID}SleepSensor"]) {
                     input name: "person${state.lastPersonID}SleepScoreBias", type: "number", title: "Sleep Score Bias", submitOnChange: false, required: false, defaultValue: 0
                     input name: "person${state.lastPersonID}SleepScoreBiasNeg", type: "bool", title: "Negative?", submitOnChange: false, required: false, defaultValue: false
+                    input name: "person${state.lastPersonID}IsNonParticipant", type: "bool", title: "Don't Compete In Sleep Competition?", submitOnChange: false, required: false, defaultValue: false
                 }
                 if (state.vehicles || state.places) paragraph getInterface("subHeader", " Presence Sensors for Person")
                 if (state.vehicles) {
@@ -278,6 +280,7 @@ def PeoplePage() {
                     if (settings["person${id}SleepSensor"]) {
                     input name: "person${id}SleepScoreBias", type: "number", title: "Sleep Score Bias", submitOnChange: false, required: false, defaultValue: 0
                     input name: "person${id}SleepScoreBiasNeg", type: "bool", title: "Negative?", submitOnChange: false, required: false, defaultValue: false
+                    input name: "person${id}IsNonParticipant", type: "bool", title: "Don't Compete In Sleep Competition?", submitOnChange: false, required: false, defaultValue: false
                 }                   
                     if (state.vehicles || state.places) paragraph getInterface("subHeader", " Presence Sensors for Person")
                     if (state.vehicles) {
@@ -394,8 +397,20 @@ def addPerson(String id) {
     state.people[id] = personMap
 }
 
+def isNonParticipant(String personId) {
+    def isNonParticipant = false
+    if (settings["person${personId}IsNonParticipant"]) isNonParticipant = true
+    return isNonParticipant
+}
+
 def getSleepData(String personId) {
     return state.people[personId]?.sleep
+}
+
+def isDisplaySleep(String personId) {
+    def isDisplay = false
+    if (isWithinSleepDisplayWindow(personId) && !isNonParticipant(personId)) isDisplay = true
+    return isDisplay
 }
 
 def isWithinSleepDisplayWindow(String personId) {
@@ -1748,7 +1763,7 @@ def disableDebugLogging() {
 def initializePlaces() {
     state.places.each { placeId, place ->
         def geocode = geocode(placeId)
-      //  logDebug("geocode response = ${geocode}.")
+        logDebug("geocode response = ${geocode}.")
         if (geocode) {
             state.places[placeId]?.latitude = geocode.results?.geometry?.location?.lat[0]
             state.places[placeId]?.longitude = geocode.results?.geometry?.location?.lng[0]
@@ -2035,7 +2050,7 @@ def sleepScoreHandler(evt) {
     state.people?.each { personId, person ->
         def isSleepDeviceForPerson = isSleepDeviceForPerson(personId, eventDevice)
         logDebug("Sleep Device for person ${personId} is ${isSleepDeviceForPerson}", "Sleep")
-        if (isSleepDeviceForPerson) {
+        if (isSleepDeviceForPerson && !isNonParticipant(personId)) {
             def midnight = new Date().clearTime()
             def midnightUtc = midnight.getTime()
             def newSleepScore = (eventValue as Integer) + getSleepScoreBias(personId)
@@ -2137,7 +2152,7 @@ def updateSleepCompetition() {
     def midnight = new Date().clearTime()
     def midnightUtc = midnight.getTime()
     state.people?.each { personId, person ->
-        if (hasSleepSensor(personId)) {
+        if (hasSleepSensor(personId) && !isNonParticipant(personId)) {
             def isInBed = state.people[personId]?.sleep.presence == "present" ? true : false
             def asOf = state.people[personId]?.sleep.presenceAtTime
             if (!inBed && asOf < midnightUtc) { // did not sleep in bed last night, so exclude from sleep competition
@@ -3032,6 +3047,7 @@ String getPlaceIdForCoordinates(latitude, longitude) {
         }
         else {
             log.warn "Warning: Null latitude or longitude for placeID=${placeId}. Latitude=${latitude}, Longitude=${longitude}, placeLatitude=${place.latitude}, placeLongitude=${place.longitude}."
+            if (place.latitude == null && place.longitude == null) log.warn "Please check to make sure you have defined places in Life360."
         }
     }
     if (placesPresentAt.size() > 1) {
@@ -3840,16 +3856,16 @@ def fetchTracker() {
     svg +=     '</mask>'
     svg += '</defs>'
     
-    def isInSleepWindow = isWithinSleepDisplayWindow(personId)
+    def isDisplaySleep = isDisplaySleep(personId)
     
-    if (!state.people[personId]?.sleepOnlySensor || (state.people[personId]?.sleepOnlySensor && isInSleepWindow) || settings["person${personId}Stars"] == true) {
+    if (!state.people[personId]?.sleepOnlySensor || (state.people[personId]?.sleepOnlySensor && isDisplaySleep) || settings["person${personId}Stars"] == true) {
         
         if (trackerType == 'svg') {
             svg += '<svg x="20" width="80" height="80" z-index="1">'
             svg += state.images.people[personId]
             svg += '</svg>'
         
-            if (isInSleepWindow) {
+            if (isDisplaySleep) {
                 svg += getSleepDataSvg(personId) 
             }
             def sleepData = getSleepData(personId)
@@ -4068,14 +4084,14 @@ def updateTracker(String personId) {
         content += '.tracker { width: 100%; padding-top: 100%; vertical-align: top; position:relative; display:block;'
         content +=            'background-repeat: no-repeat; '
 
-        def isInSleepWindow = isWithinSleepDisplayWindow(personId)
+        def isDisplaySleep = isDisplaySleep(personId)
         def sleepData = getSleepData(personId)
         def isWeekWinner = sleepData.weekWinner
         def isMonthWinner = sleepData.monthWinner
         def isWinner = isWeekWinner || isMonthWinner
 
         // DEBUG CODE
-     //   isInSleepWindow = true
+     //   isDisplaySleep = true
      //   isWinner = true
       //  isWeekWinner = true
      //   isMonthWinner = true
@@ -4086,12 +4102,12 @@ def updateTracker(String personId) {
         if (isMonthWinner) trophy = "Month Trophy"
         else if (isWeekWinner) trophy = "Week Trophy"
         
-        logDebug("isInSleepWindow: ${isInSleepWindow} isWinner: ${isWinner} for personID: ${personId}", "Sleep")
+        logDebug("isDisplaySleep: ${isDisplaySleep} isWinner: ${isWinner} for personID: ${personId}", "Sleep")
         
         if (state.people[personId]?.sleepOnlySensor ||  settings["person${personId}Stars"] == true) {
-            if (isInSleepWindow || settings["person${personId}Stars"] == true) {
+            if (isDisplaySleep || settings["person${personId}Stars"] == true) {
                 content +=            'background-position:'
-                if (isInSleepWindow) content += 'top 18% left 4%,'
+                if (isDisplaySleep) content += 'top 18% left 4%,'
                 if (isWinner) content += 'top 25% right 8%,'
                 for (def i = 0; i < state.people[personId]?.stars?.earned; i++) {
                     def starSize = 24
@@ -4108,7 +4124,7 @@ def updateTracker(String personId) {
                 }
                 content +=            'center;'
                 content +=            'background-size:'
-                if (isInSleepWindow) content += '20%,'
+                if (isDisplaySleep) content += '20%,'
                 if (isWinner)  content += '20%,'
                 for (def i = 0; i < state.people[personId]?.stars?.earned; i++) {
                     content += "17%,"
@@ -4119,7 +4135,7 @@ def updateTracker(String personId) {
                 }     
                 content +=            avatarSize + '%;'
                 content +=            'background-image:' 
-                if (isInSleepWindow) {
+                if (isDisplaySleep) {
                     content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
                 }
                 if (isWinner) {
@@ -4142,8 +4158,8 @@ def updateTracker(String personId) {
         else {
             if (tripId != null) {
                 content +=            'background-position:'
-                if (isInSleepWindow && isWinner) content += 'top 18% left 4%, top 25% right 8%,'
-                else if (isInSleepWindow) content += 'top 18% left 4%,'
+                if (isDisplaySleep && isWinner) content += 'top 18% left 4%, top 25% right 8%,'
+                else if (isDisplaySleep) content += 'top 18% left 4%,'
                 else if (isWinner) content += 'top 25% right 8%,'
                 for (def i = 0; i < state.people[personId]?.accessories?.active.size(); i++) {
                     def accessory = getAccessory(state.people[personId]?.accessories?.active[i])
@@ -4154,8 +4170,8 @@ def updateTracker(String personId) {
                 }
                 content +=            'bottom 24% right 7.5%, bottom 24% left 8%, bottom 0% right 50%, center;'
                 content +=            'background-size:'
-                if (isInSleepWindow && isWinner) content += '20%,20%,'
-                else if (isInSleepWindow) content += '20%,'
+                if (isDisplaySleep && isWinner) content += '20%,20%,'
+                else if (isDisplaySleep) content += '20%,'
                 else if (isWinner) content += '20%,'
                 for (def i = 0; i < state.people[personId]?.accessories?.active.size(); i++) {
                     def accessory = getAccessory(state.people[personId]?.accessories?.active[i])
@@ -4163,11 +4179,11 @@ def updateTracker(String personId) {
                 } 
                 content +=            '21%, 21%, 100% auto,' + avatarSize + '%;'
                 content +=            'background-image:'
-                if (isInSleepWindow && isWinner) {
+                if (isDisplaySleep && isWinner) {
                     content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
                     content += 'url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'
                 }
-                else if (isInSleepWindow) {
+                else if (isDisplaySleep) {
                     content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
                 }
                 else if (isWinner) {
@@ -4184,8 +4200,8 @@ def updateTracker(String personId) {
             }
             else {
                 content +=            'background-position:'
-                if (isInSleepWindow && isWinner) content += 'top 18% left 4%, top 25% right 8%,'
-                else if (isInSleepWindow) content += 'top 18% left 4%,'
+                if (isDisplaySleep && isWinner) content += 'top 18% left 4%, top 25% right 8%,'
+                else if (isDisplaySleep) content += 'top 18% left 4%,'
                 else if (isWinner) content += 'top 25% right 8%,'
                 for (def i = 0; i < state.people[personId]?.accessories?.active.size(); i++) {
                     def accessory = getAccessory(state.people[personId]?.accessories?.active[i])
@@ -4196,8 +4212,8 @@ def updateTracker(String personId) {
                 }
                 content +=            'bottom 24% right 7.5%, bottom 0% right 50%, center;'
                 content +=            'background-size:'
-                if (isInSleepWindow && isWinner) content += '20%,20%,'
-                else if (isInSleepWindow) content += '20%,'
+                if (isDisplaySleep && isWinner) content += '20%,20%,'
+                else if (isDisplaySleep) content += '20%,'
                 else if (isWinner) content += '22%,'
                 for (def i = 0; i < state.people[personId]?.accessories?.active.size(); i++) {
                     def accessory = getAccessory(state.people[personId]?.accessories?.active[i])
@@ -4205,11 +4221,11 @@ def updateTracker(String personId) {
                 } 
                 content +=            '21%, 100% auto,' + avatarSize + '%;'
                 content +=            'background-image:'
-                 if (isInSleepWindow && isWinner) {
+                 if (isDisplaySleep && isWinner) {
                     content += 'url("' + getSleepTrackerEndpoint(personId) + '&version='
                     content += state.refreshNum + '"), url("' + getPathOfStandardIcon(trophy,"Sleep") + '"),'
                 }
-                else if (isInSleepWindow) {
+                else if (isDisplaySleep) {
                     content += 'url("' + getSleepTrackerEndpoint(personId) + '&version=' + state.refreshNum + '"),'
                 }
                 else if (isWinner) {
