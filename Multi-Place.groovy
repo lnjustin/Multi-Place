@@ -5,6 +5,7 @@
  * v1.1.0 - Added failed arrival automations
  * v1.1.1 - Fixed issue with presenece sensor descriptions when adding/editing place
  * v1.1.2 - Debugging geocode issues
+ * v1.1.3 - Restrict API calls to be free
 
  *
  * Copyright 2020 Justin Leonard
@@ -61,6 +62,10 @@ definition(
 @Field Integer circleScaleDefault = 100
 
 @Field Integer iterationCount = 1
+
+@Field Double freeGoogleAPICredit = 200
+@Field Double googleDirectionsAPICost = 0.01
+@Field Double googleGeocodeAPICost = 0.005
 
 @Field String checkMark = "https://raw.githubusercontent.com/lnjustin/App-Images/master/checkMark.svg"
 @Field String xMark = "https://raw.githubusercontent.com/lnjustin/App-Images/master/xMark.svg"
@@ -168,6 +173,7 @@ def GoogleAPIPage() {
             paragraph getInterface("header", " Google API Access")
             href(name: "GoogleApiLink", title: "Get Google API Key", required: false, url: "https://developers.google.com/maps/documentation/directions/get-api-key", style: "external")
             input name: "api_key", type: "text", title: "Enter Google API key", required: false, submitOnChange: true
+            input name: "freeOnly", type: "bool", title: "Stop making API calls if free limit reached?", defaultValue: true
         }
         section {
           footer()   
@@ -1736,6 +1742,8 @@ def initialize() {
     resetAddEditState()
     unsubscribe()
     unschedule()
+    initializeCallCountState()
+    schedule("01 00 00 01 * ? *", resetMonthlyAPICallCount)	// reset API call count the first day of each month
     initializeDebugLogging()
     instantiateToken()
     initializePlaces()
@@ -4513,25 +4521,71 @@ def getRouteOptions(String tripId) {
 
 // ### API Methods ###
 
+def isLimitToFreeAPICalls() {
+    def limit = false
+    if (freeOnly != null && freeOnly == true) limit = true
+    return limit
+}
+
+def initializeCallCountState() {
+    if (state.callCount == null) {
+        def directionsAPI = [count:0, cost:googleDirectionsAPICost]
+       def geocodeAPI = [count:0, cost:googleGeocodeAPICost]
+        state.callCount = [directions:directionsAPI, geocode:geocodeAPI]    
+    }
+}
+
+def resetMonthlyAPICallCount() {
+    def directionsAPI = [count:0, cost:googleDirectionsAPICost]
+    def geocodeAPI = [count:0, cost:googleGeocodeAPICost]
+    state.callCount = [directions:directionsAPI, geocode:geocodeAPI]
+}
+
+def updateAPICallCount(api) {
+    state.callCount[api].count++
+}
+
+def checkAPICost() {
+    def costThisMonth = 0
+    if (state.callCount) {       
+        state.callCount.each { key, api ->
+            def apiCost = api.count * api.cost
+            costThisMonth += apiCost
+        }        
+    }
+    return costThisMonth
+}
+
 def fetchRoutes(String tripId) {
     def subUrl = "directions/json?origin=${getPlaceAddress(getOrigin(tripId))}&destination=${getPlaceAddress(getDestination(tripId))}&key=${getApiKey()}&alternatives=true&mode=driving&departure_time=now"   
-    def response = httpGetExec(subUrl)
-    return response
+    if (!isLimitToFreeAPICalls() || checkAPICost() < freeGoogleAPICredit) {
+        def response = httpGetExec(subUrl)
+        updateAPICallCount('directions')
+        return response
+    }
+    else log.error "Free Google API Calls Exhausted. Increase time between API calls in Settings"
 }
 
 def fetchRouteOptions(tripId) {
     def subUrl = "directions/json?origin=${getPlaceAddress(getOrigin(tripId))}&destination=${getPlaceAddress(getDestination(tripId))}&key=${getApiKey()}&alternatives=true&mode=driving"   // Don't need traffic info for route options, so exclude for lower billing rate
-    def response = httpGetExec(subUrl)
-    return response
+    if (!isLimitToFreeAPICalls() || checkAPICost() < freeGoogleAPICredit) {
+        def response = httpGetExec(subUrl)
+        updateAPICallCount('directions')
+        return response
+    }
+    else log.error "Free Google API Calls Exhausted. Increase time between API calls in Settings"
 }
 
 def geocode(String placeId) {
     
     def encodedAddress = java.net.URLEncoder.encode(getPlaceAddressById(placeId), "UTF-8")
     
-    def subUrl = "geocode/json?address=${encodedAddress}&key=${getApiKey()}"   
-    def response = httpGetExec(subUrl)
-    return response
+    if (!isLimitToFreeAPICalls() || checkAPICost() < freeGoogleAPICredit) {
+        def subUrl = "geocode/json?address=${encodedAddress}&key=${getApiKey()}"   
+        def response = httpGetExec(subUrl)
+        return response
+    }
+    else log.error "Free Google API Calls Exhausted. Increase time between API calls in Settings"
 }
 
 def httpGetExec(subUrl)
