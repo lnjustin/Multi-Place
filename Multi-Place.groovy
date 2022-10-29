@@ -6,7 +6,7 @@
  * v1.1.1 - Fixed issue with presenece sensor descriptions when adding/editing place
  * v1.1.2 - Debugging geocode issues
  * v1.1.3 - Restrict API calls to be free
-
+ * v1.1.4 - Bug fixes
  *
  * Copyright 2020 Justin Leonard
  *
@@ -4542,11 +4542,13 @@ def resetMonthlyAPICallCount() {
 }
 
 def updateAPICallCount(api) {
+    if (!state.callCount) initializeCallCountState()
     state.callCount[api].count++
 }
 
 def checkAPICost() {
     def costThisMonth = 0
+    if (!state.callCount) initializeCallCountState()
     if (state.callCount) {       
         state.callCount.each { key, api ->
             def apiCost = api.count * api.cost
