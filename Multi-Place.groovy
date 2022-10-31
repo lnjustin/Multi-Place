@@ -6,7 +6,7 @@
  * v1.1.1 - Fixed issue with presenece sensor descriptions when adding/editing place
  * v1.1.2 - Debugging geocode issues
  * v1.1.3 - Restrict API calls to be free
- * v1.1.4 - Bug fixes
+ * v1.1.4 - Restrictions language adjusted
  *
  * Copyright 2020 Justin Leonard
  *
@@ -147,7 +147,7 @@ def mainPage() {
                 section {
                     paragraph getInterface("header", " Travel Advisor")
                     href(name: "TripsPage", title: getInterface("boldText", "Trips"), description: (state.trips ? getTripDescriptionList() : "No trips configured"), required: false, page: "TripsPage", image: (state.trips ? checkMark : xMark))
-                    href(name: "RestrictionsPage", title: getInterface("boldText", "Mode-Based Restrictions"), description: (restrictedModes ? getRestrictedModesDescription() : "No restrictions configured. Restrict Travel Advisor by Hub Mode."), required: false, page: "RestrictionsPage", image: (restrictedModes ? checkMark : xMark))
+                    href(name: "RestrictionsPage", title: getInterface("boldText", "Restrictions"), description: (restrictedModes || restrictedSwitch ? getRestrictedModesDescription() : "No restrictions configured."), required: false, page: "RestrictionsPage", image: (restrictedModes || restrictedSwitch ? checkMark : xMark))
                 }
             }
         
@@ -1652,6 +1652,13 @@ String getRestrictedModesDescription() {
          for (i=0; i < restrictedModes.size(); i++) {
              description += restrictedModes[i] 
             if (i != restrictedModes.size()-1) description += ", "
+        }
+    }
+    
+    if (restrictedSwitch) {
+        for (i=0; i < restrictedSwitch.size(); i++) {
+             description += restrictedSwitch[i] 
+            if (i != restrictedSwitch.size()-1) description += ", "
         }
     }
     return description
@@ -4763,4 +4770,5 @@ def getPathOfStandardIcon(String name, type) {
        'Red Star': '/Stars/starRed.svg',
     'Red Earned Star': '/Stars/earnedStarRed.svg'
 ]
+
 
