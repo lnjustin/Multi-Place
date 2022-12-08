@@ -6,7 +6,8 @@
  * v1.1.1 - Fixed issue with presenece sensor descriptions when adding/editing place
  * v1.1.2 - Debugging geocode issues
  * v1.1.3 - Restrict API calls to be free
- * v1.1.4 - Restrictions language adjusted
+ * v1.1.4 - Fixed bug with sleep quality
+ * v1.1.5 - Added sleep number bed support; Revised sleep quality to be based on hardcoded score ranges
  *
  * Copyright 2020 Justin Leonard
  *
@@ -218,7 +219,8 @@ def PeoplePage() {
                 
                 input name: "person${state.lastPersonID}Life360", type: "device.LocationTrackerUserDriver", title: "Life360 with States Device", submitOnChange: false, multiple: false, required: false
                 input name: "person${state.lastPersonID}SleepSensor", type: "device.WithingsSleepSensor", title: "Withings Sleep Sensor", submitOnChange: false, multiple: false, required: false
-                if (settings["person${state.lastPersonID}SleepSensor"]) {
+                input name: "person${state.lastPersonID}SleepNumberBed", type: "device.SleepNumberBed", title: "Sleep Number Bed", submitOnChange: false, multiple: false, required: false
+                if (settings["person${state.lastPersonID}SleepSensor"] || settings["person${state.lastPersonID}SleepNumberBed"]) {
                     input name: "person${state.lastPersonID}SleepScoreBias", type: "number", title: "Sleep Score Bias", submitOnChange: false, required: false, defaultValue: 0
                     input name: "person${state.lastPersonID}SleepScoreBiasNeg", type: "bool", title: "Negative?", submitOnChange: false, required: false, defaultValue: false
                     input name: "person${state.lastPersonID}IsNonParticipant", type: "bool", title: "Don't Compete In Sleep Competition?", submitOnChange: false, required: false, defaultValue: false
@@ -283,11 +285,15 @@ def PeoplePage() {
                     
                     input name: "person${id}Life360", type: "device.LocationTrackerUserDriver", title: "Life360 with States Device", submitOnChange: true, multiple: false, required: false
                     input name: "person${id}SleepSensor", type: "device.WithingsSleepSensor", title: "Withings Sleep Sensor", submitOnChange: false, multiple: false, required: false
-                    if (settings["person${id}SleepSensor"]) {
-                    input name: "person${id}SleepScoreBias", type: "number", title: "Sleep Score Bias", submitOnChange: false, required: false, defaultValue: 0
-                    input name: "person${id}SleepScoreBiasNeg", type: "bool", title: "Negative?", submitOnChange: false, required: false, defaultValue: false
-                    input name: "person${id}IsNonParticipant", type: "bool", title: "Don't Compete In Sleep Competition?", submitOnChange: false, required: false, defaultValue: false
-                }                   
+                    input name: "person${id}SleepNumberBed", type: "device.SleepNumberBed", title: "Sleep Number Bed", submitOnChange: false, multiple: false, required: false
+                    if (settings["person${id}SleepSensor"] && settings["person${id}SleepNumberBed"]) {
+                        paragraph getInterface("error", "Please use either the Withings Sleep Sensor or the Sleep Number Bed, not both")
+                    }
+                    if (settings["person${id}SleepSensor"] || settings["person${id}SleepNumberBed"]) {
+                        input name: "person${id}SleepScoreBias", type: "number", title: "Sleep Score Bias", submitOnChange: false, required: false, defaultValue: 0
+                        input name: "person${id}SleepScoreBiasNeg", type: "bool", title: "Negative?", submitOnChange: false, required: false, defaultValue: false
+                        input name: "person${id}IsNonParticipant", type: "bool", title: "Don't Compete In Sleep Competition?", submitOnChange: false, required: false, defaultValue: false
+                    }                   
                     if (state.vehicles || state.places) paragraph getInterface("subHeader", " Presence Sensors for Person")
                     if (state.vehicles) {
                         for (vehicleId in state.vehicles) {
@@ -325,7 +331,7 @@ def PeoplePage() {
 
 def hasOnlySleepSensor(personId) {
     Boolean hasOnlySleepSensor = null
-    if (settings["person${personId}SleepSensor"]) {
+    if (settings["person${personId}SleepSensor"] || settings["person${personId}SleepNumberBed"]) {
         if (!settings["person${personId}Life360"]) {
             if (state.vehicles || state.places) {
                 if (state.vehicles) {
@@ -438,7 +444,7 @@ def isInBed(String personId) {
 
 def hasSleepSensor(String personId) {
     def hasSensor = false
-    if (settings["person${personId}SleepSensor"]) hasSensor = true
+    if (settings["person${personId}SleepSensor"] || settings["person${personId}SleepNumberBed"]) hasSensor = true
     return hasSensor
 }
 
@@ -532,6 +538,7 @@ def clearPersonSettings(String personId) {
     app.removeSetting("person${personId}AvatarCustom")
     app.removeSetting("person${personId}Life360")
     app.removeSetting("person${personId}SleepSensor") 
+     app.removeSetting("person${personId}SleepNumberBed") 
     
     if (state.vehicles) {
         for (vehicleId in state.vehicles) { 
@@ -1792,6 +1799,7 @@ def initializeSleep() {
         state.people.each { personId, person ->
             state.people[personId]?.sleepOnlySensor = hasOnlySleepSensor(personId) 
             def sleepDevice = settings["person${personId}SleepSensor"]
+            if (!sleepDevice) sleepDevice = settings["person${personId}SleepNumberBed"]
             if (sleepDevice) {
                 if (!state.people[personId]?.sleep.presence) {
                     state.people[personId]?.sleep.presence = sleepDevice.currentValue("presence")
@@ -1803,12 +1811,27 @@ def initializeSleep() {
                     state.people[personId]?.sleep.sleepDataAtTime = new Date().getTime()
                 }
                 if (!state.people[personId]?.sleep.quality) {
-                    state.people[personId]?.sleep.quality = sleepDevice.currentValue("sleepQuality")
+                    state.people[personId]?.sleep.quality = getSleepQuality(state.people[personId]?.sleep.score, settings["person${personId}SleepSensor"] != null ? "Withings" : "SleepNumberBed")
                     state.people[personId]?.sleep.sleepDataAtTime = new Date().getTime()
                 }            
             }
         }
     }
+}
+
+def getSleepQuality(score, type) {
+    def quality = "black"
+    if (type == "SleepNumberBed") {
+        if (score < 60) quality = "#f8d86b"  // yellow
+        else if (score < 85) quality = "#65d6a2"      // green
+        else if (score >= 85) quality = "#56baf8"   // blue
+    }
+    else if (type == "Withings") {
+        if (score < 50) quality = "#ee6c5c"  // red
+        else if (score < 75) quality = "#f2b14d"       // orange
+        else if (score >= 75) quality = "#73d49f"   // green       
+    }
+    return quality
 }
 
 def getSleepScoreBias(personId) {
@@ -2018,6 +2041,10 @@ def subscribePeople() {
                 subscribe(settings["person${id}SleepSensor"], "sleepScore", sleepScoreHandler)
                 subscribe(settings["person${id}SleepSensor"], "presence", bedPresenceHandler)
             }
+            if (settings["person${id}SleepNumberNed"]) {
+                subscribe(settings["person${id}SleepNumberBed"], "sleepScore", sleepScoreHandler)
+                subscribe(settings["person${id}SleepNumberBed"], "presence", bedPresenceHandler)
+            }
         }
     }
 }
@@ -2078,11 +2105,13 @@ def sleepScoreHandler(evt) {
                 else state.people[personId]?.sleep.score = existingSleepScore
             }
             else state.people[personId]?.sleep.score = newSleepScore
+            
+            def type = settings["person${personId}SleepSensor"] != null ? "Withings" : "SleepNumberBed"
+            state.people[personId]?.sleep.quality = getSleepQuality(state.people[personId]?.sleep.score, type)
+            
             // set timestamp to latest event time no matter whether latest score is the max score for the day
             state.people[personId]?.sleep.sleepDataAtTime = eventTime
-            def sleepQuality = settings["person${personId}SleepSensor"]?.currentValue("sleepQuality")
-            logDebug("Sleep data for person ${personId} is: score = ${newSleepScore}. quality = ${sleepQuality}", "Sleep")
-            if (sleepQuality) state.people[personId]?.sleep.quality = sleepQuality   // grab sleep quality on assumption that updated at the same time
+            
             if (haveMultipleSleepSensors()) updateSleepCompetition()  
            // logDebug("Updated sleep competition. Now update tracker.", "Sleep")
             updateTracker(personId)
@@ -2099,6 +2128,7 @@ def clearSleepDisplay(data) {
 
 def isSleepDeviceForPerson(String personId, device) {
      if (settings["person${personId}SleepSensor"] && settings["person${personId}SleepSensor"].getDeviceNetworkId() == device.getDeviceNetworkId()) return true
+    else if (settings["person${personId}SleepNumberBed"] && settings["person${personId}SleepNumberBed"].getDeviceNetworkId() == device.getDeviceNetworkId()) return true
     return false
 }
 
@@ -3797,14 +3827,19 @@ def deleteAllTrackers() {
 def getSleepDataSvg(String personId) {
     def svg = ""
     def sleepData = getSleepData(personId)
-    if (sleepData?.score) {
+    if (sleepData?.score && sleepData?.quality) {
+        
+        /*
         def sleepColor = "black"
         logDebug("Sleep quality: " + sleepData?.quality, "Sleep")
         if (sleepData?.quality == "Restless") sleepColor = "#ee6c5c"  // red
         else if (sleepData?.quality == "Average") sleepColor = "#f2b14d"       // orange
         else if (sleepData?.quality == "Restful") sleepColor = "#73d49f"   // green
         logDebug("Sleep color: " + sleepColor, "Sleep")
-            
+            */
+        
+        sleepColor = sleepData?.quality
+        
         def coloredSleep = state.images.sleep["Moon"]
         def colored = coloredSleep.replace("currentColor",sleepColor)
         
@@ -4770,5 +4805,4 @@ def getPathOfStandardIcon(String name, type) {
        'Red Star': '/Stars/starRed.svg',
     'Red Earned Star': '/Stars/earnedStarRed.svg'
 ]
-
 
