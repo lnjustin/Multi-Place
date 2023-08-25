@@ -9,7 +9,7 @@
  * v1.1.4 - Fixed bug with sleep quality
  * v1.1.5 - Added sleep number bed support; Revised sleep quality to be based on hardcoded score ranges
  * v1.1.6 - Added sleep stats to tracker device
- * v1.1.7 - Updated for Life360+ support in place of the depricated Life360 with States app
+ * v1.1.8 - Updated for Life360+ support in place of the depricated Life360 with States app
  *
  * Copyright 2020 Justin Leonard
  *
