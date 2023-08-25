@@ -1,9 +1,9 @@
 {
   "packageName": "Multi-Place",
   "author": "Justin Leonard",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "minimumHEVersion": "1.0",
-  "dateReleased": "2023-03-14",
+  "dateReleased": "2023-08-25",
   "apps": [
     {
       "id": "1491ad41-e8dc-4a5a-a6ef-0b5b00ef8313",
