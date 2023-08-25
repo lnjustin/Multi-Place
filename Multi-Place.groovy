@@ -9,6 +9,7 @@
  * v1.1.4 - Fixed bug with sleep quality
  * v1.1.5 - Added sleep number bed support; Revised sleep quality to be based on hardcoded score ranges
  * v1.1.6 - Added sleep stats to tracker device
+ * v1.1.7 - Updated for Life360+ support in place of the depricated Life360 with States app
  *
  * Copyright 2020 Justin Leonard
  *
@@ -221,7 +222,7 @@ def PeoplePage() {
                 }
                 paragraph getInterface("link", "SVG Avatar Creator", "https://avatarmaker.com/")
                 
-                input name: "person${state.lastPersonID}Life360", type: "device.LocationTrackerUserDriver", title: "Life360 with States Device", submitOnChange: false, multiple: false, required: false
+                input name: "person${state.lastPersonID}Life360", type: "capability.presenceSensor", title: "Life360+ Device", submitOnChange: false, multiple: false, required: false
                 input name: "person${state.lastPersonID}SleepSensor", type: "device.WithingsSleepSensor", title: "Withings Sleep Sensor", submitOnChange: false, multiple: false, required: false
                 input name: "person${state.lastPersonID}SleepNumberBed", type: "device.SleepNumberBed", title: "Sleep Number Bed", submitOnChange: false, multiple: false, required: false
                 if (settings["person${state.lastPersonID}SleepSensor"] || settings["person${state.lastPersonID}SleepNumberBed"]) {
@@ -287,7 +288,7 @@ def PeoplePage() {
                     }
                     paragraph getInterface("link", "SVG Avatar Creator", "https://avatarmaker.com/")
                     
-                    input name: "person${id}Life360", type: "device.LocationTrackerUserDriver", title: "Life360 with States Device", submitOnChange: true, multiple: false, required: false
+                    input name: "person${id}Life360", type: "capability.presenceSensor", title: "Life360+ Device", submitOnChange: true, multiple: false, required: false
                     input name: "person${id}SleepSensor", type: "device.WithingsSleepSensor", title: "Withings Sleep Sensor", submitOnChange: false, multiple: false, required: false
                     input name: "person${id}SleepNumberBed", type: "device.SleepNumberBed", title: "Sleep Number Bed", submitOnChange: false, multiple: false, required: false
                     if (settings["person${id}SleepSensor"] && settings["person${id}SleepNumberBed"]) {
@@ -924,7 +925,7 @@ def deaccessorize() {
     def personId = params.personId
     deactivateAccessories(personId)
     updateTracker(personId)
-    render contentType: "application/json", data: "", status: 200, headers: ["Access-Control-Allow-Origin": "https://run.sharptools.app"]    
+    render contentType: "application/json", data: "", status: 200, headers: ["Access-Control-Allow-Origin": "https://run.sharptools.app"]  
 }
 
 def deactivateAccessories(personId, category = null) {
@@ -2084,7 +2085,7 @@ def subscribePeople() {
                      subscribe(settings["person${id}Life360"], "latitude", life360CoordinatesHandler)
                      subscribe(settings["person${id}Life360"], "longitude", life360CoordinatesHandler)
                  }
-                 else subscribe(settings["person${id}Life360"], "address", life360AddressHandler) 
+                 else subscribe(settings["person${id}Life360"], "address1", life360AddressHandler) 
                 state.people[id].life360.isDriving = settings["person${id}Life360"].currentValue("isDriving")
                 subscribe(settings["person${id}Life360"], "isDriving", life360DrivingHandler)
             }    
@@ -3263,7 +3264,7 @@ def setPersonPlace(String personId) {
             if (lastChanged != placesPresent[0]) logDebug("Mismatch from places presence sensor logic. Needs debugging.")
             
             if (state.people[personId].life360?.address != getNameOfPlaceWithId(placesPresent[0]) && state.people[personId].life360?.address !=  getPlaceAddressById(placesPresent[0])) {
-                log.warn "Iteration# ${iterationCount}: Mismatch in presence for ${getNameOfPersonWithId(personId)}. Life360 indicates presence at ${state.people[personId].life360?.address} but presence sensor indicates he or she is present at ${getNameOfPlaceWithId(placesPresent[0])}"
+               // log.warn "Iteration# ${iterationCount}: Mismatch in presence for ${getNameOfPersonWithId(personId)}. Life360 indicates presence at ${state.people[personId].life360?.address} but presence sensor indicates he or she is present at ${getNameOfPlaceWithId(placesPresent[0])}"
             }
             // prioritize presence sensor presence over any life360 state, since presence sensor capable of combining info from multiple sources
             if (didChangePlaceById(personId, placesPresent[0])) {
@@ -3500,7 +3501,6 @@ def vehiclePresenceSensorHandler(evt) {
 def isPlaceDeviceForPerson(personId, placeId, device) {
     logDebug("In isPlaceDeviceForPerson with sensor for person: ${settings["place${placeId}Person${personId}Sensor"]} and device: ${device}", "Places")
      if (settings["place${placeId}Person${personId}Sensor"] && settings["place${placeId}Person${personId}Sensor"].getDeviceNetworkId() == device.getDeviceNetworkId()) {
-         log.debug "returning true from isPlaceDeviceForPerson"
          return true
      }
     else return false
@@ -4024,14 +4024,14 @@ def fetchTracker() {
            
         def tripId = state.people[personId]?.current.trip.id
         logDebug("Tracker for personId ${personId} with active tripID ${tripId}", "Trips")
-        def bestRoute = getBestRoute(tripId)
-           
-        def isPreferred = isPreferredRoute(tripId, bestRoute.summary)
-        def isPreferredRouteSet = isPreferredRouteSet(tripId)
-           
         def routeAlert = false
-        if (bestRoute.relativeTrafficDelay > gettrafficDelayThresholdSetting()) routeAlert = true
-        if (isPreferredRouteSet && !isPreferred) routeAlert = true
+        def bestRoute = getBestRoute(tripId)
+  
+        if (bestRoute != null) {
+            def isPreferred = isPreferredRoute(tripId, bestRoute.summary)
+            def isPreferredRouteSet = isPreferredRouteSet(tripId)
+            if (bestRoute.relativeTrafficDelay > gettrafficDelayThresholdSetting()) routeAlert = true
+            if (isPreferredRouteSet && !isPreferred) routeAlert = true
         
         def conditionColor = "green"
         if (routeAlert) conditionColor = "red"
@@ -4095,6 +4095,7 @@ def fetchTracker() {
 
                }      
            }
+      }
     }
      else if (!state.people[personId]?.sleepOnlySensor) { 
          def isPostArrival = isInPostArrivalDisplayWindow(personId)
@@ -4394,7 +4395,7 @@ def updateTracker(String personId) {
         
         if (tripId != null) {
             def bestRoute = getBestRoute(tripId)
-            if (bestRoute.relativeTrafficDelay > gettrafficDelayThresholdSetting()) {
+            if (bestRoute != null && bestRoute.relativeTrafficDelay > gettrafficDelayThresholdSetting()) {
                 def durationMins = Math.round(bestRoute.duration / 60)
                 def durationStr = (durationMins == 1) ? durationMins.toString() + " min" : durationMins.toString() + " mins"
                 tracker.sendEvent(name: 'travelAlert', value: "${settings["trip${tripId}Origin"]} to ${settings["trip${tripId}Destination"]}: ${durationStr}. Take ${bestRoute.summary}, for ${bestRoute.eta} arrival.")
@@ -4518,21 +4519,23 @@ def getTripWithRoutes(String tripId, Boolean doForceUpdate=false) {
                 state.trips[tripId].routes[i.toString()] = [summary: summary, duration: duration, trafficDelay: trafficDelay, distance: distance]
             }
             state.trips[tripId].routesAsOf = new Date().getTime()
-            def bestRouteTrafficDelay = state.trips[tripId].routes['0'].trafficDelay
-            if (!state.trips[tripId].averageTrafficDelay) {
-                state.trips[tripId].averageTrafficDelay = bestRouteTrafficDelay
-                state.trips[tripId].numSamplesForAverage = 1
+            def bestRouteTrafficDelay = state.trips[tripId].routes['0']?.trafficDelay
+            if (bestRouteTrafficDelay != null) {
+                if (!state.trips[tripId].averageTrafficDelay) {
+                    state.trips[tripId].averageTrafficDelay = bestRouteTrafficDelay
+                    state.trips[tripId].numSamplesForAverage = 1
+                }
+                else {
+                    def oldAverage = state.trips[tripId].averageTrafficDelay
+                    def newSampleNum = state.trips[tripId].numSamplesForAverage + 1
+                    state.trips[tripId].averageTrafficDelay = ((oldAverage + ((bestRouteTrafficDelay - oldAverage) / newSampleNum)) as double).round(2)
+                    state.trips[tripId].numSamplesForAverage = newSampleNum
+                }
+                def relativeTrafficDelay = state.trips[tripId].routes['0']?.trafficDelay - state.trips[tripId]?.averageTrafficDelay
+                state.trips[tripId].routes['0']?.relativeTrafficDelay = relativeTrafficDelay
+                def etaDate = getETADate(state.trips[tripId].routes['0']?.duration)
+                state.trips[tripId].routes['0'].eta = extractTimeFromDate(etaDate)
             }
-            else {
-                def oldAverage = state.trips[tripId].averageTrafficDelay
-                def newSampleNum = state.trips[tripId].numSamplesForAverage + 1
-                state.trips[tripId].averageTrafficDelay = ((oldAverage + ((bestRouteTrafficDelay - oldAverage) / newSampleNum)) as double).round(2)
-                state.trips[tripId].numSamplesForAverage = newSampleNum
-            }
-            def relativeTrafficDelay = state.trips[tripId].routes['0'].trafficDelay - state.trips[tripId].averageTrafficDelay
-            state.trips[tripId].routes['0'].relativeTrafficDelay = relativeTrafficDelay
-            def etaDate = getETADate(state.trips[tripId].routes['0'].duration)
-            state.trips[tripId].routes['0'].eta = extractTimeFromDate(etaDate)
         }
         else {
             log.warn "No response from Google Traffic API. Check connection."
