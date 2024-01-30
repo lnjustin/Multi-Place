@@ -28,11 +28,18 @@ metadata
 
         command "activateAccessory", ["number"]
         command "deactivateAccessories"
+        
+        command "setTextColor", [[name:'Color*', type:'STRING', description:'Color in hex with leading #']]
+
     }
 }
 
 def setPersonId(String personId) {
     state.personId = personId    
+}
+
+def setTextColor(color) {
+    parent.setTextColor(color)
 }
 
 def handleTap() {

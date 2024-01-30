@@ -10,8 +10,9 @@
  * v1.1.5 - Added sleep number bed support; Revised sleep quality to be based on hardcoded score ranges
  * v1.1.6 - Added sleep stats to tracker device
  * v1.1.8 - Updated for Life360+ support in place of the depricated Life360 with States app
+ * v1.1.9 - Updated for OwnTracks support
  *
- * Copyright 2020 Justin Leonard
+ * Copyright 2024 lnjustin
  *
  * Multi-Place has been licensed to you. By downloading, installing, and/or executing this software you hereby agree to the terms and conditions set forth in the Multi-Place license agreement.
  * <https://raw.githubusercontent.com/lnjustin/Multi-Place/master/License.md>
@@ -37,7 +38,7 @@ import groovy.transform.Field
 definition(
     name: "Multi-Place",
     namespace: "lnjustin",
-    author: "Justin Leonard",
+    author: "lnjustin",
     description: "Multi-Place Presence Tracker with Travel Advisor",
     category: "Presence",
     iconUrl: getLogoPath(),
@@ -55,6 +56,7 @@ definition(
 @Field Integer LateNotificationMinsDefault = 10
 @Field Integer FailedArrivalNotificationMinsDefault = 30
 @Field Integer geofenceRadiusDefault = 250
+@Field Integer isDrivingThreshold = 25
 @Field String timeFormatDefault = "12 Hour"
 @Field Boolean isPreferredRouteDisplayedDefault = false
 @Field String circleBackgroundColorDefault = "#808080"
@@ -131,7 +133,7 @@ def mainPage() {
                 header()
                 if (!api_key) {
                     paragraph getInterface("header", " Google API")
-                    href(name: "GoogleAPIPage", title: getInterface("boldText", "Configure Google API Access"), description: "Google API Access Required for Travel Advisor and Recommended for Life360 Free.", required: false, page: "GoogleAPIPage", image: xMark)
+                    href(name: "GoogleAPIPage", title: getInterface("boldText", "Configure Google API Access"), description: "Google API Access Required for Travel Advisor.", required: false, page: "GoogleAPIPage", image: xMark)
                 }
                 paragraph getInterface("header", " Core Setup")
                 if (state.people) {
@@ -222,7 +224,10 @@ def PeoplePage() {
                 }
                 paragraph getInterface("link", "SVG Avatar Creator", "https://avatarmaker.com/")
                 
-                input name: "person${state.lastPersonID}Life360", type: "capability.presenceSensor", title: "Life360+ Device", submitOnChange: false, multiple: false, required: false
+                // Allow Life360 for anyone who still has a working life360 device, but otherwise start phasing it out as defunct
+                if (settings["person${state.lastPersonID}Life360"]) input name: "person${state.lastPersonID}Life360", type: "capability.presenceSensor", title: "Life360+ Device", submitOnChange: false, multiple: false, required: false
+                
+                input name: "person${state.lastPersonID}OwnTracks", type: "capability.presenceSensor", title: "OwnTracks Device", submitOnChange: false, multiple: false, required: false
                 input name: "person${state.lastPersonID}SleepSensor", type: "device.WithingsSleepSensor", title: "Withings Sleep Sensor", submitOnChange: false, multiple: false, required: false
                 input name: "person${state.lastPersonID}SleepNumberBed", type: "device.SleepNumberBed", title: "Sleep Number Bed", submitOnChange: false, multiple: false, required: false
                 if (settings["person${state.lastPersonID}SleepSensor"] || settings["person${state.lastPersonID}SleepNumberBed"]) {
@@ -288,7 +293,10 @@ def PeoplePage() {
                     }
                     paragraph getInterface("link", "SVG Avatar Creator", "https://avatarmaker.com/")
                     
-                    input name: "person${id}Life360", type: "capability.presenceSensor", title: "Life360+ Device", submitOnChange: true, multiple: false, required: false
+                    // Allow Life360 for anyone who still has a working life360 device, but otherwise start phasing it out as defunct
+                    if (settings["person${id}Life360"]) input name: "person${id}Life360", type: "capability.presenceSensor", title: "Life360+ Device", submitOnChange: true, multiple: false, required: false
+                    
+                    input name: "person${id}OwnTracks", type: "capability.presenceSensor", title: "OwnTracks Device", submitOnChange: true, multiple: false, required: false
                     input name: "person${id}SleepSensor", type: "device.WithingsSleepSensor", title: "Withings Sleep Sensor", submitOnChange: false, multiple: false, required: false
                     input name: "person${id}SleepNumberBed", type: "device.SleepNumberBed", title: "Sleep Number Bed", submitOnChange: false, multiple: false, required: false
                     if (settings["person${id}SleepSensor"] && settings["person${id}SleepNumberBed"]) {
@@ -337,7 +345,7 @@ def PeoplePage() {
 def hasOnlySleepSensor(personId) {
     Boolean hasOnlySleepSensor = null
     if (settings["person${personId}SleepSensor"] || settings["person${personId}SleepNumberBed"]) {
-        if (!settings["person${personId}Life360"]) {
+        if (!settings["person${personId}Life360"] && !settings["person${personId}OwnTracks"]) {
             if (state.vehicles || state.places) {
                 if (state.vehicles) {
                     for (vehicleId in state.vehicles) {
@@ -405,11 +413,12 @@ def addPerson(String id) {
     def previousVehicleMap = [id: null, arrival: null, departure: null]
     def currentMap = [place: currentPlaceMap, vehicle: currentVehicleMap, trip: currentTripMap]
     def previousMap = [place: previousPlaceMap, vehicle: previousVehicleMap, trip: previousTripMap]
-    def life360Map = [address: null, latitude: null, longitude: null, placeIdAtAddress: null, placeIdWithName: null, placeIdAtCoordinates: null, atTime: null, isDriving: null]
+    def life360Map = [address: null, latitude: null, longitude: null, placeIdAtAddress: null, placeIdWithName: null, placeIdAtCoordinates: null, atTime: null, isDriving: null]  
+    def ownTracksMap = [location: null, latitude: null, longitude: null, address: null, placeIdAtAddress: null, placeIdWithName: null, placeIdAtCoordinates: null, atTime: null, lastSpeed: null]
     def sleepMap = [presence: null, presenceAtTime: null, score: null, quality: null, sleepDataAtTime: null, winner: false, weekWinCount: 0, weekWinner: false, monthWinCount: 0, monthWinner: false]
     def starsMap = [earned:null, completedCount: null, earnedToday: null]
     def accessoryMap = [earned: [], active:[]]
-    def personMap = [current: currentMap, previous: previousMap, life360: life360Map, places: null, vehicles: null, sleep: sleepMap, sleepOnlySensor: null, stars: starsMap, accessories:accessoryMap]
+    def personMap = [current: currentMap, previous: previousMap, life360: life360Map, ownTracks: ownTracksMap, places: null, vehicles: null, sleep: sleepMap, sleepOnlySensor: null, stars: starsMap, accessories:accessoryMap]
         // so use like state.people.persondId.current.place.name
     state.people[id] = personMap
 }
@@ -506,7 +515,6 @@ String getIdOfPersonWithName(String name) {
     else return list[0]
 }
 
-
 String getNameOfPersonWithId(String personId) {
     return settings["person${personId}Name"]
 }
@@ -521,6 +529,7 @@ String getPersonAvatar(String personId) {
 
 Boolean isDriving(String personId) {
     if (settings["person${id}Life360"]) return settings["person${id}Life360"].isDriving
+    else if (settings["person${id}OwnTracks"]) return settings["person${id}OwnTracks"].lastSpeed != null ? settings["person${id}OwnTracks"].lastSpeed > isDrivingThreshold : false
     else return null
 }
 
@@ -542,6 +551,7 @@ def clearPersonSettings(String personId) {
     app.removeSetting("person${personId}Avatar")
     app.removeSetting("person${personId}AvatarCustom")
     app.removeSetting("person${personId}Life360")
+    app.removeSetting("person${personId}OwnTracks")
     app.removeSetting("person${personId}SleepSensor") 
      app.removeSetting("person${personId}SleepNumberBed") 
     
@@ -1055,6 +1065,13 @@ void resetAddEditState() {
     state.addingTrip = false
     state.editingTrip = false
     state.deletingTrip = false
+}
+
+def setTextColor(color) {
+    app.updateSetting("textColor",[value:color,type:"text"])   
+    state.people.each { id, person ->
+        updateTracker(id)
+    }
 }
 
 void appButtonHandler(btn) {
@@ -2080,6 +2097,7 @@ def subscribePeople() {
         state.people.each { id, person ->
              if (settings["person${id}Life360"]) { 
                  if (isGoogleAPIConfigured()) {
+                     def life360Address = settings["person${id}Life360"].currentValue("address1")
                      def timeOfPresence = (state.people[id].life360.address != null && state.people[id].life360.address.equals(life360Address) && state.people[id].life360.atTime != null) ? state.people[id].life360.atTime : new Date().getTime() 
                      updateLife360(id, timeOfPresence)
                      subscribe(settings["person${id}Life360"], "latitude", life360CoordinatesHandler)
@@ -2088,15 +2106,41 @@ def subscribePeople() {
                  else subscribe(settings["person${id}Life360"], "address1", life360AddressHandler) 
                 state.people[id].life360.isDriving = settings["person${id}Life360"].currentValue("isDriving")
                 subscribe(settings["person${id}Life360"], "isDriving", life360DrivingHandler)
-            }    
+            }
+            else {
+                // clear state if no (longer) a life360 device, especially as life360 goes away
+                state.people[id].life360 = [address: null, latitude: null, longitude: null, placeIdAtAddress: null, placeIdWithName: null, placeIdAtCoordinates: null, atTime: null, isDriving: null] 
+            }
+            if (settings["person${id}OwnTracks"]) { 
+                if (!state.people[id].ownTracks || !state.people[id].ownTracks?.address) {
+                    def ownTracksMap = [location: null, latitude: null, longitude: null, address: null, placeIdAtAddress: null, placeIdWithName: null, placeIdAtCoordinates: null, atTime: null, lastSpeed: null]
+                    state.people[id].ownTracks = ownTracksMap
+                }
+                 if (isGoogleAPIConfigured()) {
+                     def ownTracksLocation = settings["person${id}OwnTracks"].currentValue("location")
+                     def timeOfPresence = (state.people[id].ownTracks?.location != null && state.people[id].ownTracks?.location.equals(ownTracksLocation) && state.people[id].ownTracks?.atTime != null) ? state.people[id].ownTracks?.atTime : new Date().getTime() 
+                     updateOwnTracks(id, timeOfPresence)
+                     subscribe(settings["person${id}OwnTracks"], "lat", ownTracksCoordinatesHandler)
+                     subscribe(settings["person${id}OwnTracks"], "lon", ownTracksCoordinatesHandler)
+                 }
+                subscribe(settings["person${id}OwnTracks"], "location", ownTracksLocationHandler) 
+                subscribe(settings["person${id}OwnTracks"], "address", ownTracksAddressHandler) 
+                state.people[id].ownTracks.lastSpeed = settings["person${id}OwnTracks"].currentValue("lastSpeed")
+                subscribe(settings["person${id}OwnTracks"], "lastSpeed", ownTracksLastSpeedHandler)
+            }      
+            else {
+                // clear state if no (longer) an owntracks device
+                state.people[id].ownTracks = [location: null, latitude: null, longitude: null, address: null, placeIdAtAddress: null, placeIdWithName: null, placeIdAtCoordinates: null, atTime: null, lastSpeed: null]
+            }         
             if (settings["person${id}SleepSensor"]) {
                 subscribe(settings["person${id}SleepSensor"], "sleepScore", sleepScoreHandler)
                 subscribe(settings["person${id}SleepSensor"], "presence", bedPresenceHandler)
             }
-            if (settings["person${id}SleepNumberNed"]) {
+            if (settings["person${id}SleepNumberBed"]) {
                 subscribe(settings["person${id}SleepNumberBed"], "sleepScore", sleepScoreHandler)
                 subscribe(settings["person${id}SleepNumberBed"], "presence", bedPresenceHandler)
             }
+            if (!settings["person${id}SleepSensor"] && !settings["person${id}SleepNumberBed"]) state.people[id].sleep = [presence: null, presenceAtTime: null, score: null, quality: null, sleepDataAtTime: null, winner: false, weekWinCount: 0, weekWinner: false, monthWinCount: 0, monthWinner: false]
         }
     }
 }
@@ -2112,6 +2156,41 @@ def life360CoordinatesHandler(evt) {
         }
     }
 
+}
+
+def ownTracksCoordinatesHandler(evt) {    
+    state.people?.each { personId, person ->
+        if (isOwnTracksDeviceForPerson(personId, evt.getDevice())) {
+            logDebug("Before update ownTracks from ownTracksCoorinatesHandler, State of person per place is ${state.people[personId].places}", "Places")
+            updateOwnTracks(personId, evt.getDate().getTime())
+            logDebug("After update ownTracks, State of person per place is ${state.people[personId].places}", "Places")
+            logDebug("Calling setPersonPlace from ownTracksCoordinatesHandler", "Places")
+            setPersonPlace(personId)
+        }
+    }
+
+}
+
+def updateOwnTracks(String personId, timestamp) {
+    def ownTracksLocation = settings["person${personId}OwnTracks"].currentValue("location")
+    state.people[personId]?.ownTracks.location = ownTracksLocation
+    state.people[personId]?.ownTracks.placeIdWithName = getIdOfPlaceWithName(ownTracksLocation)
+
+    def ownTracksAddress = settings["person${personId}OwnTracks"].currentValue("address")
+    state.people[personId]?.ownTracks.address = ownTracksAddress
+    state.people[personId]?.ownTracks.placeIdAtAddress = getIdOfPlaceWithAddress(ownTracksAddress)
+    
+    if (isGoogleAPIConfigured()) {
+        state.people[personId].ownTracks.latitude = settings["person${personId}OwnTracks"].currentValue("lat")
+        state.people[personId].ownTracks.longitude = settings["person${personId}OwnTracks"].currentValue("lon")
+        logDebug("OwnTracks Lat/Long for person ${personId} is ${state.people[personId].ownTracks.latitude} lat, ${state.people[personId].ownTracks.longitude} long", "Places")
+        if (state.people[personId].ownTracks.latitude && state.people[personId].ownTracks.longitude) {
+            def placeIdByCoordinates = getPlaceIdForCoordinates(state.people[personId].ownTracks.latitude, state.people[personId].ownTracks.longitude)
+            state.people[personId].ownTracks.placeIdAtCoordinates = placeIdByCoordinates
+        }
+    }
+    
+    state.people[personId]?.ownTracks.atTime = timestamp
 }
 
 def updateLife360(String personId, timestamp) {
@@ -3125,7 +3204,7 @@ Boolean mostPreferredArrivalTriggersConfigured(String  personId, String tripId) 
 Boolean acceptableArrivalTriggersConfigured(String  personId, String tripId) {
     def isConfigured = false
     
-    if (settings["person${personId}Life360"]) isConfigured = true
+    if (settings["person${personId}Life360"] || settings["person${personId}OwnTracks"]) isConfigured = true
     
     for (vehicleName in settings["trip${tripId}Vehicles"]) {
         def vehicleId = getIdOfVehicleWithName(vehicleName)
@@ -3179,11 +3258,11 @@ String getPlaceIdForCoordinates(latitude, longitude) {
         }
         else {
             log.warn "Warning: Null latitude or longitude for placeID=${placeId}. Latitude=${latitude}, Longitude=${longitude}, placeLatitude=${place.latitude}, placeLongitude=${place.longitude}."
-            if (place.latitude == null && place.longitude == null) log.warn "Please check to make sure you have defined places in Life360."
+            if (place.latitude == null && place.longitude == null) log.warn "Please check to make sure you have defined places in Life360 or OwnTracks."
         }
     }
     if (placesPresentAt.size() > 1) {
-        log.warn "Present at multiple places according to Life360 lat/long. Only reporting presence at closest place."
+        log.warn "Present at multiple places according to Life360 or OwnTracks lat/long. Only reporting presence at closest place."
     }
     return closestPlace.placeId
 }
@@ -3225,14 +3304,16 @@ def setPersonPlace(String personId) {
   //  logDebug("Iteration# ${iterationCount}: places list is ${placesList}")
   //  logDebug("Iteration# ${iterationCount}: placeIds of places where present: ${placesPresent}. placeId of lastChanged: ${lastChanged}")
     if (placesPresent.size() == 0) {
-        // just left a place and not present at any other place that has a presence sensor. Set to life360 address if available, or else set to null to indicate presence is unknown
+        // just left a place and not present at any other place that has a presence sensor. Set to life360 or OwnTracks address if available, or else set to null to indicate presence is unknown
         
-        // NOTE: setting to life360 presence means a person won't be able to leave a place until life360 detects departure. But trip can be started sooner with detection that present in vehicle or with garage door
+        // NOTE: setting to life360 or OwnTracks presence means a person won't be able to leave a place until life360 or OwnTracks detects departure. But trip can be started sooner with detection that present in vehicle or with garage door
         
-        def placeIdAtAddress = state.people[personId].life360?.placeAtAddress
-        def placeIdAtCoordinates = state.people[personId].life360?.placeAtCoordinates
-        def placeIdWithName = state.people[personId].life360?.placeWithName
+        // set to owntracks if available, then to life360 if owntracks not available
+        def placeIdAtAddress = state.people[personId].ownTracks?.placeIdAtAddress ?: state.people[personId].life360?.placeIdAtAddress
+        def placeIdAtCoordinates = state.people[personId].ownTracks?.placeIdAtCoordinates ?: state.people[personId].life360?.placeIdAtCoordinates
+        def placeIdWithName = state.people[personId].ownTracks?.placeIdWithName ?: state.people[personId].life360?.placeIdWithName
      //   logDebug("Iteration# ${iterationCount}: No presence sensors of places present.")
+     //   logDebug("Checking how to set place, with placeIdWithName=${placeIdWithName}, placeIdAtCoordinates = ${placeIdAtCoordinates}, placeIdAtAddress = ${placeIdAtAddress}, and owntracks = ${state.people[personId].ownTracks?.location}", "Places")
         if (placeIdWithName && didChangePlaceById(personId, placeIdWithName)) {
             changePersonPlaceById(personId, placeIdWithName)
         }
@@ -3242,13 +3323,20 @@ def setPersonPlace(String personId) {
         else if (placeIdAtAddress && didChangePlaceById(personId, placeIdAtAddress)) {
             changePersonPlaceById(personId, placeIdAtAddress)
         }
-        else if (state.people[personId].life360?.address && didChangePlaceByName(personId, state.people[personId].life360?.address)) {
+        else if (state.people[personId].ownTracks?.location) {
+            // ownTracks location that doesn't correspond to a place
+            if (didChangePlaceByName(personId, state.people[personId].ownTracks?.location)) changePersonPlaceByName(personId, state.people[personId].ownTracks?.location)
+            else logDebug("OwnTracks location hasn't changed. Nothing to do.", "Places")
+        }
+        else if (state.people[personId].life360?.address) {
             // life360 address that doesn't correspond to a place
-            changePersonPlaceByName(personId, state.people[personId].life360?.address)
+            if (didChangePlaceByName(personId, state.people[personId].life360?.address)) changePersonPlaceByName(personId, state.people[personId].life360?.address)
+            else logDebug("Life360 location hasn't changed. Nothing to do.", "Places")
         }
         else {
-            // no life360 address available, and not present anywhere. Set everything to null if wasn't already null
+            // no life360 or ownTracks address available, and not present anywhere. Set everything to null if wasn't already null 
             if (state.people[personId]?.current.place.id != null || state.people[personId]?.current.place.name != null) {
+                logDebug("Warning: Setting place to null because no location information available", "Places")
                 changePersonPlaceByName(personId, null)
             }
         }
@@ -3265,6 +3353,9 @@ def setPersonPlace(String personId) {
             
             if (state.people[personId].life360?.address != getNameOfPlaceWithId(placesPresent[0]) && state.people[personId].life360?.address !=  getPlaceAddressById(placesPresent[0])) {
                // log.warn "Iteration# ${iterationCount}: Mismatch in presence for ${getNameOfPersonWithId(personId)}. Life360 indicates presence at ${state.people[personId].life360?.address} but presence sensor indicates he or she is present at ${getNameOfPlaceWithId(placesPresent[0])}"
+            }
+            if (state.people[personId].ownTracks?.location != getNameOfPlaceWithId(placesPresent[0]) && state.people[personId].ownTracks?.location !=  getPlaceAddressById(placesPresent[0])) {
+               // log.warn "Iteration# ${iterationCount}: Mismatch in presence for ${getNameOfPersonWithId(personId)}. OwnTracks indicates presence at ${state.people[personId].ownTracks?.location} but presence sensor indicates he or she is present at ${getNameOfPlaceWithId(placesPresent[0])}"
             }
             // prioritize presence sensor presence over any life360 state, since presence sensor capable of combining info from multiple sources
             if (didChangePlaceById(personId, placesPresent[0])) {
@@ -3294,7 +3385,7 @@ def setPersonPlace(String personId) {
 def didChangePlaceByName(String personId, String placeName) {
 
     def placeIdByName = getIdOfPlaceWithName(placeName)
-    def placeIdByAddress = getIdOfPlaceWithAddress(placeName)    // if life360 being used, placeName could be just an address
+    def placeIdByAddress = getIdOfPlaceWithAddress(placeName)    // if life360 or OwnTracks being used, placeName could be just an address
     
     logDebug("In didChangePlaceByName() for person ${personId} with placeName ${placeName}. placeIdByName is ${placeIdByName}. placeIdByAddress is ${placeIdByAddress}. And current place id is ${state.people[personId]?.current.place.id}", "Places")
     // check if place presence actually changed
@@ -3330,7 +3421,7 @@ def didChangePlaceById(String personId, String placeId) {
 
 def changePersonPlaceByName(String personId, String placeName) {    
     def placeIdByName = getIdOfPlaceWithName(placeName)
-    def placeIdByAddress = getIdOfPlaceWithAddress(placeName)    // if life360 being used, placeName could be just an address
+    def placeIdByAddress = getIdOfPlaceWithAddress(placeName)    // if life360 or OwnTracks being used, placeName could be just an address
     
     state.people[personId]?.previous.place.id = state.people[personId]?.current.place.id
     state.people[personId]?.previous.place.name = state.people[personId]?.current.place.name
@@ -3348,7 +3439,7 @@ def changePersonPlaceByName(String personId, String placeName) {
         state.people[personId]?.current.place.name = getNameOfPlaceWithId(placeIdByAddress)
         state.people[personId]?.current.place.arrival = new Date().getTime()
     }
-    else {    // place name is either an address of an unknown place (from life360) or is null (indicating completely unknown presence)
+    else {    // place name is either an address of an unknown place (from life360 or OwnTracks) or is null (indicating completely unknown presence)
         state.people[personId]?.current.place.id = null
         state.people[personId]?.current.place.name = placeName
         state.people[personId]?.current.place.arrival = (placeName) ? new Date().getTime() : null
@@ -3452,6 +3543,45 @@ def changePersonVehicle(String personId, String vehicleId) {
     state.people[personId].current.vehicle.id = (vehicleId) ? vehicleId : null
     logDebug("Changed Person ${personId} current vehicleID to ${(state.people[personId].current.vehicle.id) ? state.people[personId].current.vehicle.id : 'null'} with arrival at ${(state.people[personId].current.vehicle.arrival) ? state.people[personId].current.vehicle.arrival : 'null'}", "Vehicles")
     handleVehicleChange(personId)
+}
+
+def isOwnTracksDeviceForPerson(String personId, device) {
+     if (settings["person${personId}OwnTracks"] && settings["person${personId}OwnTracks"].getDeviceNetworkId() == device.getDeviceNetworkId()) return true
+    return false
+}
+
+def ownTracksLocationHandler(evt) {
+    state.people?.each { personId, person ->
+        if (isOwnTracksDeviceForPerson(personId, evt.getDevice())) {
+            logDebug("Before update OwnTracks from ownTracksLocationHandler, State of person per place is ${state.people[personId].places}", "Places")
+            updateOwnTracks(personId, evt.getDate().getTime()) 
+            logDebug("After update OwnTracks from ownTracksLocationHandler, State of person per place is ${state.people[personId].places}", "Places")
+            logDebug("Calling setPersonPlace from ownTracksLocationHandler", "Places")
+            setPersonPlace(personId)
+        }
+    }
+}
+
+def ownTracksAddressHandler(evt) {
+    state.people?.each { personId, person ->
+        if (isOwnTracksDeviceForPerson(personId, evt.getDevice())) {
+            logDebug("Before update OwnTracks from ownTracksAddressHandler, State of person per place is ${state.people[personId].places}", "Places")
+            updateOwnTracks(personId, evt.getDate().getTime()) 
+            logDebug("After update OwnTracks from ownTracksAddressHandler, State of person per place is ${state.people[personId].places}", "Places")
+            logDebug("Calling setPersonPlace from ownTracksAddressHandler", "Places")
+            setPersonPlace(personId)
+        }
+    }
+}
+
+def ownTracksLastSpeedHandler(evt) {
+    state.people?.each { personId, person ->
+        if (isOwnTracksDeviceForPerson(personId, evt.getDevice())) {
+            state.people[personId]?.ownTracks.lastSpeed = evt.value
+            state.people[personId]?.ownTracks.atTime = evt.getDate().getTime()
+            handleDrivingChange(personId)
+        }
+    }    
 }
 
 def isLife360DeviceForPerson(String personId, device) {
